@@ -1,0 +1,24 @@
+{
+  "name": "neighborhood-intelligence-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "db:migrate": "node-pg-migrate up",
+    "db:rollback": "node-pg-migrate down"
+  },
+  "dependencies": {
+    "fastify": "^5.0.0",
+    "fastify-cors": "^8.3.0",
+    "@fastify/swagger": "^8.0.0",
+    "@fastify/swagger-ui": "^8.0.0",
+    "pg": "^8.12.0",
+    "node-pg-migrate": "^6.2.2",
+    "dotenv": "^16.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.10.9"
+  }
+}
