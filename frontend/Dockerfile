@@ -11,7 +11,8 @@ ARG VITE_GA_MEASUREMENT_ID
 ENV VITE_GA_MEASUREMENT_ID=$VITE_GA_MEASUREMENT_ID
 
 # Copy package files and lock file
-COPY package.json bun.lockb ./
+COPY package.json ./
+COPY bun.lockb* ./
 
 # Install dependencies
 RUN bun install --frozen-lockfile
