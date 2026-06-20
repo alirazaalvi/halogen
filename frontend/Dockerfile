@@ -32,7 +32,7 @@ WORKDIR /app
 RUN npm install -g serve
 
 # Copy built assets from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/dist/client ./dist
 
 # Expose port (Railway will set $PORT)
 EXPOSE 3000
