@@ -1,8 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
+
+type ChatMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+};
+
+type BackendAiResponse = {
+  success?: boolean;
+  data?: {
+    reply?: string;
+  };
+};
+
+const backendBaseUrl = import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:3001";
 
 export const Route = createFileRoute("/assistant")({
   head: () => ({
@@ -18,16 +31,11 @@ export const Route = createFileRoute("/assistant")({
   component: AssistantPage,
 });
 
-const initial: UIMessage[] = [
+const initial: ChatMessage[] = [
   {
     id: "welcome",
     role: "assistant",
-    parts: [
-      {
-        type: "text",
-        text: "Hej! I'm your FamilyMove assistant. Tell me about your family — kids' ages, where you work, budget, lifestyle — and I'll suggest the best Swedish neighborhoods for you.",
-      },
-    ],
+    text: "Hej! I'm your FamilyMove assistant. Tell me about your family - kids' ages, where you work, budget, lifestyle - and I'll suggest the best Swedish neighborhoods for you.",
   },
 ];
 
@@ -40,12 +48,8 @@ const suggestions = [
 ];
 
 function AssistantPage() {
-  const transport = useRef(new DefaultChatTransport({ api: "/api/chat" })).current;
-  const { messages, sendMessage, status } = useChat({
-    id: "assistant",
-    messages: initial,
-    transport,
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>(initial);
+  const [status, setStatus] = useState<"ready" | "submitted" | "streaming">("ready");
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isLoading = status === "submitted" || status === "streaming";
@@ -57,8 +61,47 @@ function AssistantPage() {
   async function send(text: string) {
     const t = text.trim();
     if (!t || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: t,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setStatus("submitted");
     setInput("");
-    await sendMessage({ text: t });
+
+    try {
+      const response = await fetch(`${backendBaseUrl}/api/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: t }),
+      });
+
+      const json = (await response.json()) as BackendAiResponse;
+      const reply = json.data?.reply?.trim() || "I could not generate a reply right now.";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: reply,
+        },
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: "I can't reach the backend right now. Please try again in a moment.",
+        },
+      ]);
+    } finally {
+      setStatus("ready");
+    }
   }
 
   return (
@@ -126,8 +169,8 @@ function AssistantPage() {
   );
 }
 
-function Message({ m }: { m: UIMessage }) {
-  const text = m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+function Message({ m }: { m: ChatMessage }) {
+  const text = m.text;
   if (m.role === "user") {
     return (
       <div className="flex justify-end">

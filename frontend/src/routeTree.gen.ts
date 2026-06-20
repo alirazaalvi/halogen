@@ -14,8 +14,6 @@ import { Route as CompareRouteImport } from './routes/compare'
 import { Route as AssistantRouteImport } from './routes/assistant'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AreasSlugRouteImport } from './routes/areas.$slug'
-import { Route as ApiNeighborhoodScoreRouteImport } from './routes/api/neighborhood-score'
-import { Route as ApiChatRouteImport } from './routes/api/chat'
 
 const PropertyAnalysisRoute = PropertyAnalysisRouteImport.update({
   id: '/property-analysis',
@@ -42,24 +40,12 @@ const AreasSlugRoute = AreasSlugRouteImport.update({
   path: '/areas/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiNeighborhoodScoreRoute = ApiNeighborhoodScoreRouteImport.update({
-  id: '/api/neighborhood-score',
-  path: '/api/neighborhood-score',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiChatRoute = ApiChatRouteImport.update({
-  id: '/api/chat',
-  path: '/api/chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/assistant': typeof AssistantRoute
   '/compare': typeof CompareRoute
   '/property-analysis': typeof PropertyAnalysisRoute
-  '/api/chat': typeof ApiChatRoute
-  '/api/neighborhood-score': typeof ApiNeighborhoodScoreRoute
   '/areas/$slug': typeof AreasSlugRoute
 }
 export interface FileRoutesByTo {
@@ -67,8 +53,6 @@ export interface FileRoutesByTo {
   '/assistant': typeof AssistantRoute
   '/compare': typeof CompareRoute
   '/property-analysis': typeof PropertyAnalysisRoute
-  '/api/chat': typeof ApiChatRoute
-  '/api/neighborhood-score': typeof ApiNeighborhoodScoreRoute
   '/areas/$slug': typeof AreasSlugRoute
 }
 export interface FileRoutesById {
@@ -77,8 +61,6 @@ export interface FileRoutesById {
   '/assistant': typeof AssistantRoute
   '/compare': typeof CompareRoute
   '/property-analysis': typeof PropertyAnalysisRoute
-  '/api/chat': typeof ApiChatRoute
-  '/api/neighborhood-score': typeof ApiNeighborhoodScoreRoute
   '/areas/$slug': typeof AreasSlugRoute
 }
 export interface FileRouteTypes {
@@ -88,26 +70,15 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/compare'
     | '/property-analysis'
-    | '/api/chat'
-    | '/api/neighborhood-score'
     | '/areas/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/assistant'
-    | '/compare'
-    | '/property-analysis'
-    | '/api/chat'
-    | '/api/neighborhood-score'
-    | '/areas/$slug'
+  to: '/' | '/assistant' | '/compare' | '/property-analysis' | '/areas/$slug'
   id:
     | '__root__'
     | '/'
     | '/assistant'
     | '/compare'
     | '/property-analysis'
-    | '/api/chat'
-    | '/api/neighborhood-score'
     | '/areas/$slug'
   fileRoutesById: FileRoutesById
 }
@@ -116,8 +87,6 @@ export interface RootRouteChildren {
   AssistantRoute: typeof AssistantRoute
   CompareRoute: typeof CompareRoute
   PropertyAnalysisRoute: typeof PropertyAnalysisRoute
-  ApiChatRoute: typeof ApiChatRoute
-  ApiNeighborhoodScoreRoute: typeof ApiNeighborhoodScoreRoute
   AreasSlugRoute: typeof AreasSlugRoute
 }
 
@@ -158,20 +127,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AreasSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/neighborhood-score': {
-      id: '/api/neighborhood-score'
-      path: '/api/neighborhood-score'
-      fullPath: '/api/neighborhood-score'
-      preLoaderRoute: typeof ApiNeighborhoodScoreRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/chat': {
-      id: '/api/chat'
-      path: '/api/chat'
-      fullPath: '/api/chat'
-      preLoaderRoute: typeof ApiChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -180,20 +135,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssistantRoute: AssistantRoute,
   CompareRoute: CompareRoute,
   PropertyAnalysisRoute: PropertyAnalysisRoute,
-  ApiChatRoute: ApiChatRoute,
-  ApiNeighborhoodScoreRoute: ApiNeighborhoodScoreRoute,
   AreasSlugRoute: AreasSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
