@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS district_scores (
     calculated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Ensure Stockholm municipality exists before district FK inserts.
+INSERT INTO municipalities (id, name, code, population)
+VALUES (1, 'Stockholm', '0180', 975551)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    code = EXCLUDED.code,
+    population = EXCLUDED.population;
+
 -- Insert Stockholm districts
 INSERT INTO districts (id, municipality_id, name, type, population, area_km2, centroid, description) VALUES
 ('STH-GAMLA-STAN', 1, 'Gamla Stan', 'neighborhood', 3200, 0.37, ST_GeomFromText('POINT(18.0713 59.3247)', 4326), 'Historic Old Town with medieval streets and cultural heritage'),
