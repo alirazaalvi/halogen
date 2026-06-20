@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Municipalities
-CREATE TABLE municipalities (
+CREATE TABLE IF NOT EXISTS municipalities (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     code VARCHAR(10) UNIQUE NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE municipalities (
 );
 
 -- DeSO Areas (primary geographic unit)
-CREATE TABLE deso_areas (
+CREATE TABLE IF NOT EXISTS deso_areas (
     id VARCHAR(10) PRIMARY KEY,
     municipality_id INTEGER REFERENCES municipalities(id),
     name VARCHAR(200),
@@ -25,11 +25,11 @@ CREATE TABLE deso_areas (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_deso_geom ON deso_areas USING GIST(geometry);
-CREATE INDEX idx_deso_centroid ON deso_areas USING GIST(centroid);
+CREATE INDEX IF NOT EXISTS idx_deso_geom ON deso_areas USING GIST(geometry);
+CREATE INDEX IF NOT EXISTS idx_deso_centroid ON deso_areas USING GIST(centroid);
 
 -- Addresses
-CREATE TABLE addresses (
+CREATE TABLE IF NOT EXISTS addresses (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     address_string VARCHAR(200) NOT NULL,
@@ -39,11 +39,11 @@ CREATE TABLE addresses (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_addresses_geom ON addresses USING GIST(coordinates);
-CREATE INDEX idx_addresses_deso ON addresses(deso_id);
+CREATE INDEX IF NOT EXISTS idx_addresses_geom ON addresses USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS idx_addresses_deso ON addresses(deso_id);
 
 -- Demographics (time-series)
-CREATE TABLE demographics (
+CREATE TABLE IF NOT EXISTS demographics (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     year INTEGER NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE demographics (
 );
 
 -- Schools
-CREATE TABLE schools (
+CREATE TABLE IF NOT EXISTS schools (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     name VARCHAR(200) NOT NULL,
@@ -68,10 +68,10 @@ CREATE TABLE schools (
     school_type VARCHAR(50)
 );
 
-CREATE INDEX idx_schools_geom ON schools USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS idx_schools_geom ON schools USING GIST(coordinates);
 
 -- Transport
-CREATE TABLE transport_stops (
+CREATE TABLE IF NOT EXISTS transport_stops (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(200),
     type VARCHAR(20),
@@ -80,10 +80,10 @@ CREATE TABLE transport_stops (
     frequency_per_hour INTEGER
 );
 
-CREATE INDEX idx_stops_geom ON transport_stops USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS idx_stops_geom ON transport_stops USING GIST(coordinates);
 
 -- Crime Statistics
-CREATE TABLE crime_stats (
+CREATE TABLE IF NOT EXISTS crime_stats (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     year INTEGER NOT NULL,
@@ -94,7 +94,7 @@ CREATE TABLE crime_stats (
 );
 
 -- Property Sales
-CREATE TABLE property_sales (
+CREATE TABLE IF NOT EXISTS property_sales (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     sale_date DATE,
@@ -106,7 +106,7 @@ CREATE TABLE property_sales (
 );
 
 -- Future Developments
-CREATE TABLE future_projects (
+CREATE TABLE IF NOT EXISTS future_projects (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     title VARCHAR(200),
@@ -119,7 +119,7 @@ CREATE TABLE future_projects (
 );
 
 -- Environmental Data
-CREATE TABLE environmental_data (
+CREATE TABLE IF NOT EXISTS environmental_data (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     year INTEGER,
@@ -130,7 +130,7 @@ CREATE TABLE environmental_data (
 );
 
 -- Neighborhood Scores
-CREATE TABLE neighborhood_scores (
+CREATE TABLE IF NOT EXISTS neighborhood_scores (
     deso_id VARCHAR(10) PRIMARY KEY REFERENCES deso_areas(id),
     overall_score DECIMAL(5, 2),
     demographics_score DECIMAL(5, 2),
@@ -145,7 +145,7 @@ CREATE TABLE neighborhood_scores (
 );
 
 -- Lantmäteriet normalized property records
-CREATE TABLE lantmateriet_properties (
+CREATE TABLE IF NOT EXISTS lantmateriet_properties (
     property_id VARCHAR(50) PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     address_string VARCHAR(200) NOT NULL,
@@ -155,11 +155,11 @@ CREATE TABLE lantmateriet_properties (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_lantmateriet_properties_geom ON lantmateriet_properties USING GIST(coordinates);
-CREATE INDEX idx_lantmateriet_properties_deso ON lantmateriet_properties(deso_id);
+CREATE INDEX IF NOT EXISTS idx_lantmateriet_properties_geom ON lantmateriet_properties USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS idx_lantmateriet_properties_deso ON lantmateriet_properties(deso_id);
 
 -- SMHI environmental observations
-CREATE TABLE smhi_observations (
+CREATE TABLE IF NOT EXISTS smhi_observations (
     id BIGSERIAL PRIMARY KEY,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
     year INTEGER NOT NULL,
@@ -176,7 +176,7 @@ CREATE TABLE smhi_observations (
 );
 
 -- Municipal open data project feed
-CREATE TABLE municipal_projects (
+CREATE TABLE IF NOT EXISTS municipal_projects (
     id BIGSERIAL PRIMARY KEY,
     external_id VARCHAR(100) UNIQUE NOT NULL,
     deso_id VARCHAR(10) REFERENCES deso_areas(id),
@@ -190,5 +190,5 @@ CREATE TABLE municipal_projects (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_municipal_projects_geom ON municipal_projects USING GIST(coordinates);
-CREATE INDEX idx_municipal_projects_deso ON municipal_projects(deso_id);
+CREATE INDEX IF NOT EXISTS idx_municipal_projects_geom ON municipal_projects USING GIST(coordinates);
+CREATE INDEX IF NOT EXISTS idx_municipal_projects_deso ON municipal_projects(deso_id);

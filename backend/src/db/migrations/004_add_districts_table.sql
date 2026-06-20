@@ -1,5 +1,5 @@
 -- Create districts table for city neighborhoods and urban districts
-CREATE TABLE districts (
+CREATE TABLE IF NOT EXISTS districts (
     id VARCHAR(20) PRIMARY KEY,
     municipality_id INTEGER REFERENCES municipalities(id),
     name VARCHAR(200) NOT NULL,
@@ -13,33 +13,33 @@ CREATE TABLE districts (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_districts_geom ON districts USING GIST(geometry);
-CREATE INDEX idx_districts_centroid ON districts USING GIST(centroid);
-CREATE INDEX idx_districts_municipality ON districts(municipality_id);
+CREATE INDEX IF NOT EXISTS idx_districts_geom ON districts USING GIST(geometry);
+CREATE INDEX IF NOT EXISTS idx_districts_centroid ON districts USING GIST(centroid);
+CREATE INDEX IF NOT EXISTS idx_districts_municipality ON districts(municipality_id);
 
 -- Extend foreign key references to support districts in addition to DESO areas
 -- Schools can now reference either deso_id or district_id
-ALTER TABLE schools ADD COLUMN district_id VARCHAR(20) REFERENCES districts(id);
-CREATE INDEX idx_schools_district ON schools(district_id);
+ALTER TABLE schools ADD COLUMN IF NOT EXISTS district_id VARCHAR(20) REFERENCES districts(id);
+CREATE INDEX IF NOT EXISTS idx_schools_district ON schools(district_id);
 
 -- Crime statistics can reference districts
-ALTER TABLE crime_stats ADD COLUMN district_id VARCHAR(20) REFERENCES districts(id);
-CREATE INDEX idx_crime_stats_district ON crime_stats(district_id);
+ALTER TABLE crime_stats ADD COLUMN IF NOT EXISTS district_id VARCHAR(20) REFERENCES districts(id);
+CREATE INDEX IF NOT EXISTS idx_crime_stats_district ON crime_stats(district_id);
 
 -- Demographics can reference districts
-ALTER TABLE demographics ADD COLUMN district_id VARCHAR(20) REFERENCES districts(id);
-CREATE INDEX idx_demographics_district ON demographics(district_id);
+ALTER TABLE demographics ADD COLUMN IF NOT EXISTS district_id VARCHAR(20) REFERENCES districts(id);
+CREATE INDEX IF NOT EXISTS idx_demographics_district ON demographics(district_id);
 
 -- Future projects can reference districts
-ALTER TABLE future_projects ADD COLUMN district_id VARCHAR(20) REFERENCES districts(id);
-CREATE INDEX idx_future_projects_district ON future_projects(district_id);
+ALTER TABLE future_projects ADD COLUMN IF NOT EXISTS district_id VARCHAR(20) REFERENCES districts(id);
+CREATE INDEX IF NOT EXISTS idx_future_projects_district ON future_projects(district_id);
 
 -- Environmental data can reference districts
-ALTER TABLE environmental_data ADD COLUMN district_id VARCHAR(20) REFERENCES districts(id);
-CREATE INDEX idx_environmental_data_district ON environmental_data(district_id);
+ALTER TABLE environmental_data ADD COLUMN IF NOT EXISTS district_id VARCHAR(20) REFERENCES districts(id);
+CREATE INDEX IF NOT EXISTS idx_environmental_data_district ON environmental_data(district_id);
 
 -- Scores for districts
-CREATE TABLE district_scores (
+CREATE TABLE IF NOT EXISTS district_scores (
     district_id VARCHAR(20) PRIMARY KEY REFERENCES districts(id),
     overall_score DECIMAL(5, 2),
     demographics_score DECIMAL(5, 2),
@@ -69,7 +69,8 @@ INSERT INTO districts (id, municipality_id, name, type, population, area_km2, ce
 ('STH-SKEPPSHOLMEN', 1, 'Skeppsholmen', 'neighborhood', 1500, 0.89, ST_GeomFromText('POINT(18.0923 59.3174)', 4326), 'Museum island with cultural institutions and government buildings'),
 ('STH-NORMALM-SOUTH', 1, 'Norrmalm Söder', 'neighborhood', 9200, 1.5, ST_GeomFromText('POINT(18.0823 59.3213)', 4326), 'Central district with mixed-use development'),
 ('STH-ROPSTEN', 1, 'Ropsten', 'neighborhood', 5600, 1.1, ST_GeomFromText('POINT(18.1128 59.3316)', 4326), 'Waterfront district with residential and commercial space'),
-('STH-DROTTNINGHOLM', 1, 'Drottningholm', 'neighborhood', 3800, 1.2, ST_GeomFromText('POINT(18.0011 59.3327)', 4326), 'Royal palace area with historical significance');
+('STH-DROTTNINGHOLM', 1, 'Drottningholm', 'neighborhood', 3800, 1.2, ST_GeomFromText('POINT(18.0011 59.3327)', 4326), 'Royal palace area with historical significance')
+ON CONFLICT (id) DO NOTHING;
 
 -- Update Stockholm municipality reference if needed
 UPDATE municipalities SET name = 'Stockholm' WHERE id = 1;
