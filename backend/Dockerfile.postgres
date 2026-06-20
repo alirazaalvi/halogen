@@ -1,0 +1,12 @@
+FROM postgis/postgis:16-3.4
+
+ENV POSTGRES_USER=postgres
+ENV POSTGRES_PASSWORD=postgres
+ENV POSTGRES_DB=neighborhood_intelligence
+
+COPY docker/postgres/init/ /docker-entrypoint-initdb.d/
+
+EXPOSE 5432
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
+  CMD pg_isready -U postgres -d neighborhood_intelligence || exit 1

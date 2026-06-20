@@ -9,11 +9,23 @@ export function CircularScore({ value, size = 180, label = "Family Score" }: Pro
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const dash = (value / 100) * c;
-  const color = value >= 85 ? "var(--color-leaf)" : value >= 70 ? "var(--color-sky-foreground)" : "var(--color-primary)";
+  const color =
+    value >= 85
+      ? "var(--color-leaf)"
+      : value >= 70
+        ? "var(--color-sky-foreground)"
+        : "var(--color-primary)";
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="var(--color-muted)" strokeWidth={stroke} fill="none" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke="var(--color-muted)"
+          strokeWidth={stroke}
+          fill="none"
+        />
         <circle
           cx={size / 2}
           cy={size / 2}

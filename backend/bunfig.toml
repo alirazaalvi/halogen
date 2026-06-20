@@ -1,0 +1,5 @@
+# bunfig.toml
+[install]
+# Bun registry config
+saveTextLockfile = true
+hoist = true

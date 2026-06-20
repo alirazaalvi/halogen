@@ -7,8 +7,11 @@ import { areas, getArea } from "@/data/areas";
 export const Route = createFileRoute("/property-analysis")({
   head: () => ({
     meta: [
-      { title: "Property Investment Analysis — FamilyMove Sweden" },
-      { name: "description", content: "Analyze Swedish property prices with AI-powered investment insights." },
+      { title: "Property Investment Analysis — Swemove" },
+      {
+        name: "description",
+        content: "Analyze Swedish property prices with AI-powered investment insights.",
+      },
     ],
   }),
   component: PropertyAnalysisPage,
@@ -25,7 +28,10 @@ export function PropertyAnalysisPage() {
   const [selectedArea, setSelectedArea] = useState(areas[0].slug);
   const area = getArea(selectedArea) ?? areas[0];
 
-  const { pricePerSqm, avgPrice, marketPosition, affordability, riskScore } = calculateMetrics(input, area);
+  const { pricePerSqm, avgPrice, marketPosition, affordability, riskScore } = calculateMetrics(
+    input,
+    area,
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,7 +50,9 @@ export function PropertyAnalysisPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Area</label>
+                <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Area
+                </label>
                 <select
                   value={selectedArea}
                   onChange={(e) => setSelectedArea(e.target.value)}
@@ -59,7 +67,9 @@ export function PropertyAnalysisPage() {
               </div>
 
               <div>
-                <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Price (SEK)</label>
+                <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  Price (SEK)
+                </label>
                 <input
                   type="number"
                   value={input.price}
@@ -127,7 +137,10 @@ export function PropertyAnalysisPage() {
                 <CommuteRow label="🚲 Bike" minutes={area.commute.bike} />
               </div>
               <div className="mt-6">
-                <CircularScore value={calculateCommuteScore(area.commute.transit)} label="Commute Score" />
+                <CircularScore
+                  value={calculateCommuteScore(area.commute.transit)}
+                  label="Commute Score"
+                />
               </div>
             </div>
           </div>
@@ -139,10 +152,29 @@ export function PropertyAnalysisPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-4">
               <FamilyMetric label="Schools" score={area.scores.schools} />
-              <FamilyMetric label="Playgrounds" score={Math.min(100, area.amenities.find((a) => a.label === "Playgrounds")?.count * 3 || 80)} />
-              <FamilyMetric label="Healthcare" score={Math.min(100, area.amenities.find((a) => a.label === "Healthcare")?.count * 15 || 90)} />
+              <FamilyMetric
+                label="Playgrounds"
+                score={Math.min(
+                  100,
+                  (area.amenities?.find((a) => a.label === "Playgrounds")?.count ?? 0) * 3 || 80,
+                )}
+              />
+              <FamilyMetric
+                label="Healthcare"
+                score={Math.min(
+                  100,
+                  (area.amenities?.find((a) => a.label === "Healthcare")?.count ?? 0) * 15 || 90,
+                )}
+              />
               <FamilyMetric label="Parks" score={area.scores.green} />
-              <FamilyMetric label="Sports facilities" score={Math.min(100, area.amenities.find((a) => a.label === "Football Clubs")?.count * 14 || 75)} />
+              <FamilyMetric
+                label="Sports facilities"
+                score={Math.min(
+                  100,
+                  (area.amenities?.find((a) => a.label === "Football Clubs")?.count ?? 0) * 14 ||
+                    75,
+                )}
+              />
             </div>
             <div className="flex items-center justify-center">
               <CircularScore value={area.scores.schools} label="Family Score" size={200} />
@@ -164,7 +196,15 @@ export function PropertyAnalysisPage() {
   );
 }
 
-function MetricCard({ label, value, tone }: { label: string; value: string; tone?: "primary" | "leaf" | "sky" }) {
+function MetricCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "primary" | "leaf" | "sky";
+}) {
   const bgClass =
     tone === "leaf"
       ? "bg-leaf/15 text-leaf-foreground"
@@ -175,7 +215,9 @@ function MetricCard({ label, value, tone }: { label: string; value: string; tone
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
-      <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-sm font-medium ${bgClass}`}>{value}</div>
+      <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-sm font-medium ${bgClass}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -190,7 +232,8 @@ function CommuteRow({ label, minutes }: { label: string; minutes: number }) {
 }
 
 function FamilyMetric({ label, score }: { label: string; score: number }) {
-  const color = score >= 85 ? "var(--color-leaf)" : score >= 70 ? "var(--color-sky)" : "var(--color-primary)";
+  const color =
+    score >= 85 ? "var(--color-leaf)" : score >= 70 ? "var(--color-sky)" : "var(--color-primary)";
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm">{label}</span>
@@ -199,15 +242,14 @@ function FamilyMetric({ label, score }: { label: string; score: number }) {
   );
 }
 
-function calculateMetrics(input: PropertyInput, area: typeof areas[0]) {
+function calculateMetrics(input: PropertyInput, area: (typeof areas)[0]) {
   const pricePerSqm = input.price / input.area;
   const avgPrice = area.monthlyEstimate * 12 * 20; // estimated avg price proxy
   const diff = ((pricePerSqm - avgPrice / 50) / (avgPrice / 50)) * 100;
   const marketPosition = diff > 5 ? "Above average" : diff < -5 ? "Below average" : "Average";
-  const affordability = (input.price / area.demographics.medianIncome < 7 ? "Affordable" : "Premium").replace(
-    /(.)/,
-    (c) => c.toUpperCase(),
-  );
+  const affordability = (
+    input.price / area.demographics.medianIncome < 7 ? "Affordable" : "Premium"
+  ).replace(/(.)/, (c) => c.toUpperCase());
   const riskScore = area.scores.growth >= 85 ? 25 : area.scores.growth >= 70 ? 45 : 65;
 
   return { pricePerSqm, avgPrice, marketPosition, affordability, riskScore };

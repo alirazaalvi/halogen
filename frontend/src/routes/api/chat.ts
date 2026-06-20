@@ -1,21 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
-import { areas } from "@/data/areas";
 
 type Body = { messages?: unknown };
 
-const systemPrompt = `You are FamilyMove Sweden's relocation assistant. You help families decide where to live in Sweden by combining school quality, commute, green space, kids' activities, amenities, community feel, safety, housing market and future growth.
+const systemPrompt = `You are Swemove's relocation assistant. You help families decide where to live in Sweden by combining school quality, commute, green space, kids' activities, amenities, community feel, safety, housing market and future growth.
 
 Be warm, concise, and practical. Format answers with short paragraphs and bullet points. Always reference at least one of the demo neighborhoods below by name when relevant, with a 1-line reason.
-
-DEMO NEIGHBORHOODS (curated mock data):
-${areas
-  .map(
-    (a) =>
-      `- ${a.name} (${a.region}) — overall ${a.overall}/100. Schools ${a.scores.schools}, commute ${a.scores.commute}, safety ${a.scores.safety}, housing ${a.scores.housing}, green ${a.scores.green}, growth ${a.scores.growth}. Median income ${a.demographics.medianIncome} SEK. Monthly estimate ${a.monthlyEstimate} SEK. ${a.tagline}.`,
-  )
-  .join("\n")}
 
 PROPERTY INVESTMENT ANALYSIS:
 When users ask about property prices or investment decisions, analyze:
@@ -26,7 +17,7 @@ When users ask about property prices or investment decisions, analyze:
 - Risk factors (based on safety and crime trends)
 - Commute advantages
 
-If a user asks about an area not in this list, answer with general Swedish knowledge but mention this is a demo with limited data. Never invent specific statistics.`;
+If specific area metrics are unavailable from backend APIs, provide guidance and call out that exact local statistics are currently unavailable. Never invent specific statistics.`;
 
 export const Route = createFileRoute("/api/chat")({
   server: {

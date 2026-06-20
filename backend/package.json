@@ -1,24 +1,35 @@
 {
   "name": "neighborhood-intelligence-backend",
-  "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "db:migrate": "node-pg-migrate up",
-    "db:rollback": "node-pg-migrate down"
+    "dev": "bun run --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "ingest": "bun run src/lib/ingestion/run.ts",
+    "ingest:all": "bun run ingest",
+    "db:up": "bash ./scripts/db-up.sh",
+    "db:down": "bash ./scripts/db-down.sh",
+    "db:migrate:manual": "bash ./scripts/db-migrate.sh",
+    "lint": "biome check src",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run lint && bun run typecheck",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "fastify": "^5.0.0",
-    "fastify-cors": "^8.3.0",
-    "@fastify/swagger": "^8.0.0",
-    "@fastify/swagger-ui": "^8.0.0",
+    "@fastify/cors": "^8.3.0",
+    "@fastify/swagger": "^8.3.0",
+    "@fastify/swagger-ui": "^1.1.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^4.28.0",
     "pg": "^8.12.0",
-    "node-pg-migrate": "^6.2.2",
-    "dotenv": "^16.4.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.10.9"
+    "@biomejs/biome": "^2.5.0",
+    "@types/pg": "^8.20.0",
+    "bun-types": "latest",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.8.3"
   }
 }

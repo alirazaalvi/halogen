@@ -9,13 +9,22 @@ export type ScoreKey =
   | "safety"
   | "housing";
 
+export interface SourceLink {
+  label: string;
+  url: string;
+}
+
 export interface School {
   name: string;
+  address?: string;
   distance: string;
   walkMin: number;
   students: number;
   performance: number;
+  lat?: number;
+  lng?: number;
   inspection: "Approved" | "Excellent" | "Needs review";
+  sourceLinks?: SourceLink[];
 }
 
 export interface Amenity {
@@ -23,6 +32,7 @@ export interface Amenity {
   icon: string;
   count: number;
   nearest: string;
+  sourceLinks?: SourceLink[];
 }
 
 export interface FutureProject {
@@ -30,6 +40,7 @@ export interface FutureProject {
   title: string;
   type: "School" | "Transport" | "Housing" | "Park" | "Road";
   confidence?: number;
+  sourceLinks?: SourceLink[];
 }
 
 export interface Area {
@@ -49,6 +60,7 @@ export interface Area {
     familiesPct: number;
     higherEduPct: number;
     ownershipPct: number;
+    sourceLinks?: SourceLink[];
   };
   schools: School[];
   amenities: Amenity[];
@@ -67,6 +79,140 @@ export interface Area {
 }
 
 export const areas: Area[] = [
+  {
+    slug: "rinkeby",
+    name: "Rinkeby",
+    region: "Stockholm",
+    tagline: "Vibrant community with strong local spirit",
+    summary:
+      "A diverse and lively neighborhood with excellent metro connections, local shops, and Järvafältet green spaces nearby.",
+    overall: 72,
+    coords: [59.39, 17.92],
+    scores: {
+      schools: 70,
+      commute: 85,
+      green: 72,
+      kids: 78,
+      amenities: 75,
+      community: 82,
+      growth: 78,
+      safety: 58,
+      housing: 65,
+    },
+    demographics: {
+      population: 15000,
+      growth: 2.5,
+      medianIncome: 320000,
+      avgAge: 32,
+      familiesPct: 45,
+      higherEduPct: 35,
+      ownershipPct: 28,
+    },
+    schools: [
+      {
+        name: "Rinkeby Skola",
+        address: "Rinkeby Allé 45, 163 50 Spånga",
+        distance: "0.3 km",
+        walkMin: 4,
+        students: 520,
+        performance: 75,
+        inspection: "Approved",
+      },
+      {
+        name: "Rinkeby Internationella Skola",
+        address: "Rinkeby Allé 80, 163 50 Spånga",
+        distance: "0.7 km",
+        walkMin: 9,
+        students: 380,
+        performance: 78,
+        inspection: "Approved",
+      },
+    ],
+    amenities: [
+      { label: "Playgrounds", icon: "🛝", count: 10, nearest: "140 m" },
+      { label: "Libraries", icon: "📚", count: 1, nearest: "250 m" },
+      { label: "Swimming Pools", icon: "🏊", count: 1, nearest: "1.3 km" },
+      { label: "Football Clubs", icon: "⚽", count: 2, nearest: "500 m" },
+      { label: "Healthcare", icon: "🏥", count: 2, nearest: "350 m" },
+      { label: "Pharmacies", icon: "💊", count: 2, nearest: "180 m" },
+      { label: "Supermarkets", icon: "🛒", count: 5, nearest: "90 m" },
+      { label: "Childcare", icon: "🧸", count: 8, nearest: "160 m" },
+    ],
+    commute: { target: "Stockholm City", car: 18, transit: 20, bike: 25, walk: 65 },
+    future: [
+      { year: 2026, title: "Rinkeby Center Renewal", type: "Housing", confidence: 82 },
+      { year: 2027, title: "New sports facility", type: "Park", confidence: 75 },
+    ],
+    monthlyEstimate: 24500,
+    safety: 58,
+    housing: 65,
+    crimeStats: [
+      { year: 2023, incidents: 350, trend: "stable" },
+      { year: 2024, incidents: 320, trend: "stable" },
+    ],
+  },
+  {
+    slug: "husby",
+    name: "Husby",
+    region: "Stockholm",
+    tagline: "Calm living with metro access",
+    summary:
+      "A peaceful neighborhood just north of Rinkeby with good metro links, local services, and proximity to Järvafältet nature reserve.",
+    overall: 74,
+    coords: [59.40, 17.90],
+    scores: {
+      schools: 73,
+      commute: 83,
+      green: 75,
+      kids: 80,
+      amenities: 72,
+      community: 80,
+      growth: 82,
+      safety: 62,
+      housing: 68,
+    },
+    demographics: {
+      population: 12000,
+      growth: 2.0,
+      medianIncome: 340000,
+      avgAge: 35,
+      familiesPct: 42,
+      higherEduPct: 38,
+      ownershipPct: 32,
+    },
+    schools: [
+      {
+        name: "Husby Skola",
+        address: "Husby Allé 33, 163 42 Spånga",
+        distance: "0.4 km",
+        walkMin: 5,
+        students: 480,
+        performance: 78,
+        inspection: "Approved",
+      },
+    ],
+    amenities: [
+      { label: "Playgrounds", icon: "🛝", count: 8, nearest: "110 m" },
+      { label: "Libraries", icon: "📚", count: 1, nearest: "300 m" },
+      { label: "Swimming Pools", icon: "🏊", count: 1, nearest: "1.5 km" },
+      { label: "Football Clubs", icon: "⚽", count: 2, nearest: "450 m" },
+      { label: "Healthcare", icon: "🏥", count: 2, nearest: "400 m" },
+      { label: "Pharmacies", icon: "💊", count: 2, nearest: "220 m" },
+      { label: "Supermarkets", icon: "🛒", count: 4, nearest: "100 m" },
+      { label: "Childcare", icon: "🧸", count: 7, nearest: "150 m" },
+    ],
+    commute: { target: "Stockholm City", car: 20, transit: 22, bike: 28, walk: 70 },
+    future: [
+      { year: 2026, title: "Husby Park Development", type: "Park", confidence: 78 },
+    ],
+    monthlyEstimate: 25200,
+    safety: 62,
+    housing: 68,
+    crimeStats: [
+      { year: 2023, incidents: 310, trend: "stable" },
+      { year: 2024, incidents: 290, trend: "stable" },
+    ],
+  },
   {
     slug: "kista",
     name: "Kista",
@@ -97,9 +243,33 @@ export const areas: Area[] = [
       ownershipPct: 48,
     },
     schools: [
-      { name: "Kista Grundskola", distance: "0.4 km", walkMin: 5, students: 612, performance: 88, inspection: "Approved" },
-      { name: "Engelska Skolan Kista", distance: "0.8 km", walkMin: 10, students: 740, performance: 92, inspection: "Excellent" },
-      { name: "Husby Skola", distance: "1.2 km", walkMin: 15, students: 480, performance: 79, inspection: "Approved" },
+      {
+        name: "Kista Grundskola",
+        address: "Kista Allé 5, 164 40 Kista",
+        distance: "0.4 km",
+        walkMin: 5,
+        students: 612,
+        performance: 88,
+        inspection: "Approved",
+      },
+      {
+        name: "Engelska Skolan Kista",
+        address: "Kista Science Tower 1, 164 40 Kista",
+        distance: "0.8 km",
+        walkMin: 10,
+        students: 740,
+        performance: 92,
+        inspection: "Excellent",
+      },
+      {
+        name: "Husby Skola",
+        address: "Husby Allé 33, 163 42 Spånga",
+        distance: "1.2 km",
+        walkMin: 15,
+        students: 480,
+        performance: 79,
+        inspection: "Approved",
+      },
     ],
     amenities: [
       { label: "Playgrounds", icon: "🛝", count: 14, nearest: "120 m" },
@@ -156,9 +326,33 @@ export const areas: Area[] = [
       ownershipPct: 72,
     },
     schools: [
-      { name: "Tegelhagens Skola", distance: "0.6 km", walkMin: 8, students: 510, performance: 94, inspection: "Excellent" },
-      { name: "Sollentuna International", distance: "1.0 km", walkMin: 12, students: 380, performance: 96, inspection: "Excellent" },
-      { name: "Häggviksskolan", distance: "1.5 km", walkMin: 18, students: 620, performance: 87, inspection: "Approved" },
+      {
+        name: "Tegelhagens Skola",
+        address: "Tegelhagsvägen 2, 191 39 Sollentuna",
+        distance: "0.6 km",
+        walkMin: 8,
+        students: 510,
+        performance: 94,
+        inspection: "Excellent",
+      },
+      {
+        name: "Sollentuna International",
+        address: "Edsviksvägen 40, 191 47 Sollentuna",
+        distance: "1.0 km",
+        walkMin: 12,
+        students: 380,
+        performance: 96,
+        inspection: "Excellent",
+      },
+      {
+        name: "Häggviksskolan",
+        address: "Häggviks Allé 10, 191 38 Sollentuna",
+        distance: "1.5 km",
+        walkMin: 18,
+        students: 620,
+        performance: 87,
+        inspection: "Approved",
+      },
     ],
     amenities: [
       { label: "Playgrounds", icon: "🛝", count: 22, nearest: "150 m" },
@@ -214,9 +408,33 @@ export const areas: Area[] = [
       ownershipPct: 78,
     },
     schools: [
-      { name: "Slottsparkens Skola", distance: "0.7 km", walkMin: 9, students: 430, performance: 90, inspection: "Excellent" },
-      { name: "Näsbypark Skola", distance: "1.2 km", walkMin: 14, students: 560, performance: 86, inspection: "Approved" },
-      { name: "Täby Friskola", distance: "1.4 km", walkMin: 17, students: 290, performance: 91, inspection: "Excellent" },
+      {
+        name: "Slottsparkens Skola",
+        address: "Slottsparksvägen 12, 187 30 Täby",
+        distance: "0.7 km",
+        walkMin: 9,
+        students: 430,
+        performance: 90,
+        inspection: "Excellent",
+      },
+      {
+        name: "Näsbypark Skola",
+        address: "Näsbyparksvägen 5, 187 64 Täby",
+        distance: "1.2 km",
+        walkMin: 14,
+        students: 560,
+        performance: 86,
+        inspection: "Approved",
+      },
+      {
+        name: "Täby Friskola",
+        address: "Täby Centrum 1, 187 30 Täby",
+        distance: "1.4 km",
+        walkMin: 17,
+        students: 290,
+        performance: 91,
+        inspection: "Excellent",
+      },
     ],
     amenities: [
       { label: "Playgrounds", icon: "🛝", count: 28, nearest: "100 m" },
@@ -272,9 +490,33 @@ export const areas: Area[] = [
       ownershipPct: 64,
     },
     schools: [
-      { name: "Matteusskolan", distance: "0.3 km", walkMin: 4, students: 690, performance: 91, inspection: "Excellent" },
-      { name: "Gustav Vasa Skola", distance: "0.6 km", walkMin: 7, students: 540, performance: 89, inspection: "Approved" },
-      { name: "Adolf Fredriks Musikklasser", distance: "1.0 km", walkMin: 12, students: 470, performance: 95, inspection: "Excellent" },
+      {
+        name: "Matteusskolan",
+        address: "Sankt Eriksgatan 24, 113 34 Stockholm",
+        distance: "0.3 km",
+        walkMin: 4,
+        students: 690,
+        performance: 91,
+        inspection: "Excellent",
+      },
+      {
+        name: "Gustav Vasa Skola",
+        address: "Odengatan 15, 113 22 Stockholm",
+        distance: "0.6 km",
+        walkMin: 7,
+        students: 540,
+        performance: 89,
+        inspection: "Approved",
+      },
+      {
+        name: "Adolf Fredriks Musikklasser",
+        address: "Kungsholmsgatan 20, 112 27 Stockholm",
+        distance: "1.0 km",
+        walkMin: 12,
+        students: 470,
+        performance: 95,
+        inspection: "Excellent",
+      },
     ],
     amenities: [
       { label: "Playgrounds", icon: "🛝", count: 11, nearest: "90 m" },

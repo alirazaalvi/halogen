@@ -1,68 +1,48 @@
-# Backend Service - Swedish Neighborhood Intelligence
+# Neighborhood Intelligence Backend (Bun + TypeScript)
 
-Fastify backend with PostgreSQL/PostGIS database.
+Fastify backend handling Swedish public API data collection and storage.
 
-## Setup
+## Quick Start
 
-### Backend (Node.js/Fastify)
 ```bash
-cd backend
-npm install
+# Install dependencies
+bun install
+
+# Set environment
 cp .env.example .env
-# Edit .env with your database URL
-npm run dev
-```
 
-### Python AI Service
-```bash
-cd python
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or venv\Scripts\activate  # Windows
-pip install -r requirements.txt
-uvicorn api:app --reload --port 8000
-```
+# Run ingestion engine
+bun run ingest
 
-## API Endpoints
-
-### Swagger UI Documentation
-Once the backend is running, visit:
-```
-http://localhost:3001/docs
-```
-
-### REST Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/search?q=` | Search addresses/neighborhoods |
-| GET | `/api/neighborhood/:deso_id` | Get neighborhood details |
-| GET | `/api/neighborhood-score?deso_id=` | Get scores |
-| POST | `/api/investment/analyze` | Property analysis |
-| POST | `/api/ai/chat` | AI chat |
-| POST | `/api/ai/summary` | AI summary |
-| GET | `/api/compare?a=&b=` | Compare areas |
-| POST | `/internal/ingest/scb` | SCB data ingestion |
-| POST | `/internal/ingest/bra` | Crime data ingestion |
-
-## Database Migration
-
-Requires PostgreSQL with PostGIS extension.
-```bash
-psql -d neighborhood_intelligence -f src/db/migrations/001_create_core_tables.sql
+# Start server
+bun run dev
 ```
 
 ## Architecture
 
+**Fastify Backend (TypeScript/Bun):**
+- Handles all Swedish public API calls (SCB, Trafiklab, Skolverket, BRÅ, SMHI)
+- Stores to PostgreSQL/PostGIS
+- REST API endpoints
+- Swagger docs: http://localhost:3001/docs
+
+**Python AI Service (venv):**
+- Scoring algorithms
+- AI chat/summary generation
+- Reads from database only
+
+## Ingestion Engine
+
+Located in `src/lib/ingestion/engine.ts`:
+
+```typescript
+const engine = new IngestionEngine();
+await engine.ingestAll('123'); // deso_id
 ```
-backend/          # Fastify API server
-├── src/
-│   ├── server.js              # Entry point
-│   ├── db/                    # Database connection + migrations
-│   ├── modules/               # Route handlers
-│   └── lib/                   # Scoring engine
-python/           # FastAPI service (venv)
-├── api.py                     # AI endpoints
-├── scoring_engine.py            # Standalone scoring
-└── start.sh                   # Venv startup
-```
+
+Endpoints:
+- POST `/internal/ingest/full` - Full ingestion
+- POST `/internal/ingest/scb` - SCB data
+- POST `/internal/ingest/trafiklab` - Transport
+- POST `/internal/ingest/skolverket` - Schools
+- POST `/internal/ingest/bra` - Crime

@@ -1,0 +1,23 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: ni-postgres-local
+    container_name: ni-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neighborhood_intelligence
+    ports:
+      - "5432:5432"
+    volumes:
+      - ni_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d neighborhood_intelligence"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ni_postgres_data:

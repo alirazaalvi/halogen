@@ -143,3 +143,52 @@ CREATE TABLE neighborhood_scores (
     future_growth_score DECIMAL(5, 2),
     calculated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Lantmäteriet normalized property records
+CREATE TABLE lantmateriet_properties (
+    property_id VARCHAR(50) PRIMARY KEY,
+    deso_id VARCHAR(10) REFERENCES deso_areas(id),
+    address_string VARCHAR(200) NOT NULL,
+    coordinates GEOMETRY(Point, 4326),
+    building_year INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_lantmateriet_properties_geom ON lantmateriet_properties USING GIST(coordinates);
+CREATE INDEX idx_lantmateriet_properties_deso ON lantmateriet_properties(deso_id);
+
+-- SMHI environmental observations
+CREATE TABLE smhi_observations (
+    id BIGSERIAL PRIMARY KEY,
+    deso_id VARCHAR(10) REFERENCES deso_areas(id),
+    year INTEGER NOT NULL,
+    source_station VARCHAR(50) NOT NULL,
+    flood_risk DECIMAL(6, 2),
+    green_space_ratio DECIMAL(6, 2),
+    air_quality_index DECIMAL(6, 2),
+    temperature_avg DECIMAL(6, 2),
+    rainfall_mm DECIMAL(8, 2),
+    wind_exposure_index DECIMAL(6, 2),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(deso_id, year, source_station)
+);
+
+-- Municipal open data project feed
+CREATE TABLE municipal_projects (
+    id BIGSERIAL PRIMARY KEY,
+    external_id VARCHAR(100) UNIQUE NOT NULL,
+    deso_id VARCHAR(10) REFERENCES deso_areas(id),
+    source_municipality VARCHAR(100) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    project_type VARCHAR(50),
+    coordinates GEOMETRY(Point, 4326),
+    status VARCHAR(30),
+    confidence DECIMAL(6, 2),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_municipal_projects_geom ON municipal_projects USING GIST(coordinates);
+CREATE INDEX idx_municipal_projects_deso ON municipal_projects(deso_id);

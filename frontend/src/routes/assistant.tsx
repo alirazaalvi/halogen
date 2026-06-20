@@ -7,8 +7,12 @@ import { SiteHeader } from "@/components/SiteHeader";
 export const Route = createFileRoute("/assistant")({
   head: () => ({
     meta: [
-      { title: "AI Relocation Assistant — FamilyMove Sweden" },
-      { name: "description", content: "Ask the FamilyMove AI assistant about neighborhoods, schools, commute and family life in Sweden." },
+      { title: "AI Relocation Assistant — Swemove" },
+      {
+        name: "description",
+        content:
+          "Ask the Swemove AI assistant about neighborhoods, schools, commute and family life in Sweden.",
+      },
     ],
   }),
   component: AssistantPage,
@@ -21,8 +25,7 @@ const initial: UIMessage[] = [
     parts: [
       {
         type: "text",
-        text:
-          "Hej! I'm your FamilyMove assistant. Tell me about your family — kids' ages, where you work, budget, lifestyle — and I'll suggest the best Swedish neighborhoods for you.",
+        text: "Hej! I'm your FamilyMove assistant. Tell me about your family — kids' ages, where you work, budget, lifestyle — and I'll suggest the best Swedish neighborhoods for you.",
       },
     ],
   },
@@ -64,10 +67,15 @@ function AssistantPage() {
       <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-8">
         <div className="mb-6">
           <h1 className="font-display text-4xl">AI Relocation Assistant</h1>
-          <p className="mt-2 text-muted-foreground">Tailored neighborhood recommendations powered by Lovable AI.</p>
+          <p className="mt-2 text-muted-foreground">
+            Tailored neighborhood recommendations powered by Lovable AI.
+          </p>
         </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto rounded-3xl border border-border bg-card/60 p-5">
+        <div
+          ref={scrollRef}
+          className="flex-1 space-y-5 overflow-y-auto rounded-3xl border border-border bg-card/60 p-5"
+        >
           {messages.map((m) => (
             <Message key={m.id} m={m} />
           ))}
@@ -131,10 +139,10 @@ function Message({ m }: { m: UIMessage }) {
   }
   return (
     <div className="flex gap-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-leaf/20 text-leaf-foreground">✦</div>
-      <div className="max-w-[85%] whitespace-pre-wrap text-sm leading-relaxed">
-        {text}
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-leaf/20 text-leaf-foreground">
+        ✦
       </div>
+      <div className="max-w-[85%] whitespace-pre-wrap text-sm leading-relaxed">{text}</div>
     </div>
   );
 }
