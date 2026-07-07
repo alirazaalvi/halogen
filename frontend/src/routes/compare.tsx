@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CircularScore } from "@/components/CircularScore";
 import { ScoreBar } from "@/components/ScoreBar";
+import { formatDisplayScore, normalizeDisplayScore } from "@/lib/score-format";
 
 const backendBaseUrl = import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:3001";
 
@@ -76,11 +77,6 @@ const metrics: Array<{ key: keyof CompareScoreSet; label: string }> = [
   { key: "demographics", label: "Demographics" },
   { key: "growth", label: "Future growth" },
 ];
-
-function normalizeScore(value: unknown): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function ComparePicker({
   value,
@@ -181,7 +177,7 @@ function ComparePage() {
         }
 
         const json = (await res.json()) as FeaturedResponse;
-        const results = (json.data?.results ?? [])
+        const results: PickedArea[] = (json.data?.results ?? [])
           .filter((item) => Boolean(item.id && item.name))
           .map((item) => ({
             id: String(item.id),
@@ -230,13 +226,13 @@ function ComparePage() {
         }
 
         const json = (await res.json()) as SearchResponse;
-        const matches = (json.data?.results ?? [])
+        const matches: PickedArea[] = (json.data?.results ?? [])
           .filter((item) => Boolean(item.id && item.name))
           .map((item) => ({
             id: String(item.id),
             name: String(item.name),
             municipality: item.municipality,
-            type: item.type,
+            type: item.type === "district" ? "district" : "deso",
           }));
 
         setOptions(matches);
@@ -317,8 +313,8 @@ function ComparePage() {
 
   const rows = useMemo(() => {
     return metrics.map((metric) => {
-      const scoreA = normalizeScore(areaA?.scores?.[metric.key]);
-      const scoreB = normalizeScore(areaB?.scores?.[metric.key]);
+      const scoreA = normalizeDisplayScore(areaA?.scores?.[metric.key]);
+      const scoreB = normalizeDisplayScore(areaB?.scores?.[metric.key]);
       const winner: "a" | "b" | "tie" =
         scoreA == null || scoreB == null
           ? "tie"
@@ -394,7 +390,7 @@ function ComparePage() {
                 </div>
                 <CircularScore
                   value={
-                    normalizeScore(
+                    normalizeDisplayScore(
                       side === "a" ? areaA?.scores?.overall : areaB?.scores?.overall,
                     ) ?? 0
                   }
@@ -443,7 +439,7 @@ function Cell({ value, win }: { value: number | null; win: boolean }) {
       <div
         className={`mx-auto inline-flex min-w-[64px] items-center justify-center rounded-full px-3 py-1 font-display text-xl ${win ? "bg-leaf/20 text-leaf-foreground" : "text-foreground/80"}`}
       >
-        {value == null ? "-" : value}
+        {value == null ? "-" : formatDisplayScore(value)}
       </div>
       {isNum && (
         <div className="mx-auto mt-2 w-24">

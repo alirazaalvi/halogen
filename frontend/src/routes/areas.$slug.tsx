@@ -5,8 +5,30 @@ import { CircularScore } from "@/components/CircularScore";
 import { ScoreBar } from "@/components/ScoreBar";
 import { AreaMap } from "@/components/AreaMap";
 import { getArea, scoreLabels, type ScoreKey, type Area, type SourceLink } from "@/data/areas";
+import { formatDisplayScore } from "@/lib/score-format";
 
 const backendBaseUrl = import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:3001";
+const districtUiDebugSlugs = new Set(["hagalund", "hallonbergen", "rissne"]);
+
+function reportDistrictUiDebug(
+  hypothesisId: string,
+  msg: string,
+  data: Record<string, unknown>,
+): void {
+  fetch("http://127.0.0.1:7777/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "district-ui-data",
+      runId: "pre-fix",
+      hypothesisId,
+      location: "frontend/src/routes/areas.$slug.tsx",
+      msg,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
 
 type SearchResponse = {
   success: boolean;
@@ -52,18 +74,18 @@ type AreaDetailsResponse = {
       growth?: number | string | null;
     };
     details?: {
-        schools?: Array<{
-          name?: string;
-          address?: string;
-          distance?: string;
-          walkMin?: number;
-          students?: number;
-          performance?: number;
-          lat?: number | null;
-          lng?: number | null;
-          inspection?: "Approved" | "Excellent" | "Needs review";
-          sourceLinks?: SourceLink[];
-        }>;
+      schools?: Array<{
+        name?: string;
+        address?: string;
+        distance?: string;
+        walkMin?: number;
+        students?: number;
+        performance?: number;
+        lat?: number | null;
+        lng?: number | null;
+        inspection?: "Approved" | "Excellent" | "Needs review";
+        sourceLinks?: SourceLink[];
+      }>;
       commute?: {
         target?: string;
         car?: number;
@@ -389,6 +411,22 @@ function AreaPage() {
           details = detailsJson.data;
         }
 
+        // #region debug-point D:district-ui-frontend-fetch
+        if (districtUiDebugSlugs.has(slug)) {
+          reportDistrictUiDebug("D", "[DEBUG] Frontend details fetched", {
+            slug,
+            resolvedAreaId: areaId,
+            detailsAreaName: details?.area?.name ?? null,
+            detailsAreaLat: details?.area?.coordinates?.lat ?? null,
+            detailsAreaLng: details?.area?.coordinates?.lng ?? null,
+            schoolsCount: details?.details?.schools?.length ?? 0,
+            firstSchool: details?.details?.schools?.[0]?.name ?? null,
+            firstSchoolLat: details?.details?.schools?.[0]?.lat ?? null,
+            firstSchoolLng: details?.details?.schools?.[0]?.lng ?? null,
+          });
+        }
+        // #endregion
+
         setLiveArea((prev) => ({
           ...prev,
           name: details?.area?.name ?? prev.name,
@@ -489,6 +527,26 @@ function AreaPage() {
             })) ?? prev.crimeStats,
         }));
 
+        // #region debug-point E:district-ui-frontend-state
+        if (districtUiDebugSlugs.has(slug)) {
+          const nextCoords =
+            details?.area?.coordinates?.lat != null && details?.area?.coordinates?.lng != null
+              ? [Number(details.area.coordinates.lat), Number(details.area.coordinates.lng)]
+              : null;
+          const nextSchools =
+            details?.details?.schools?.map((s) => ({
+              name: s.name ?? "School",
+              lat: toFiniteNumber(s.lat),
+              lng: toFiniteNumber(s.lng),
+            })) ?? [];
+          reportDistrictUiDebug("E", "[DEBUG] Frontend live area state prepared", {
+            slug,
+            mapCenter: nextCoords,
+            schoolMarkers: nextSchools.slice(0, 4),
+          });
+        }
+        // #endregion
+
         if (details?.details?.growthPrediction) {
           const liveGrowth = toFiniteNumber(live?.growth) ?? 0;
           const fallbackLevel: GrowthPredictionState["level"] =
@@ -585,7 +643,7 @@ function AreaPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{scoreLabels[k].icon}</span>
-                <span className="font-display text-2xl">{liveArea.scores[k]}</span>
+                <span className="font-display text-2xl">{formatDisplayScore(liveArea.scores[k])}</span>
               </div>
               <div className="mt-3 text-sm font-medium">{scoreLabels[k].label}</div>
               <div className="mt-3">
@@ -648,7 +706,7 @@ function AreaPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-display text-3xl">{s.performance}</div>
+                    <div className="font-display text-3xl">{formatDisplayScore(s.performance)}</div>
                     <div className="text-xs text-muted-foreground">/100</div>
                   </div>
                 </div>
@@ -801,7 +859,7 @@ function AreaPage() {
                   </div>
                 ))}
                 <div className="mt-3 text-xs text-muted-foreground">
-                  Safety score: {liveArea.safety ?? 0}/100 (
+                  Safety score: {formatDisplayScore(liveArea.safety ?? 0)}/100 (
                   {(liveArea.safety ?? 0) >= 80
                     ? "Low crime"
                     : (liveArea.safety ?? 0) >= 70

@@ -1,7 +1,9 @@
 import {
+  boolean,
   customType,
   decimal,
   integer,
+  jsonb,
   numeric,
   pgTable,
   serial,
@@ -30,6 +32,7 @@ export const desoAreas = pgTable("deso_areas", {
 
 export const districts = pgTable("districts", {
   id: varchar("id", { length: 20 }).primaryKey(),
+  desoId: varchar("deso_id", { length: 10 }),
   municipalityId: integer("municipality_id"),
   name: varchar("name", { length: 200 }).notNull(),
   type: varchar("type", { length: 50 }),
@@ -38,6 +41,47 @@ export const districts = pgTable("districts", {
   geometry: geometry("geometry"),
   centroid: geometry("centroid"),
   description: varchar("description", { length: 500 }),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const districtAliases = pgTable("district_aliases", {
+  id: serial("id").primaryKey(),
+  districtId: varchar("district_id", { length: 20 }).notNull(),
+  aliasName: varchar("alias_name", { length: 200 }).notNull(),
+  normalizedAlias: varchar("normalized_alias", { length: 200 }).notNull(),
+  aliasKind: varchar("alias_kind", { length: 30 }).notNull(),
+  source: varchar("source", { length: 50 }).notNull(),
+  priority: integer("priority").notNull(),
+  isDisplay: boolean("is_display").notNull(),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const namedDistricts = pgTable("named_districts", {
+  id: varchar("id", { length: 80 }).primaryKey(),
+  municipalityId: integer("municipality_id"),
+  sourceMunicipalityCode: varchar("source_municipality_code", { length: 4 }).notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  normalizedName: varchar("normalized_name", { length: 200 }).notNull(),
+  sourceType: varchar("source_type", { length: 40 }).notNull(),
+  sourceId: varchar("source_id", { length: 120 }),
+  legacyDistrictId: varchar("legacy_district_id", { length: 20 }),
+  geometry: geometry("geometry"),
+  centroid: geometry("centroid"),
+  description: varchar("description", { length: 500 }),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const namedDistrictDesoMap = pgTable("named_district_deso_map", {
+  districtId: varchar("district_id", { length: 80 }).notNull(),
+  desoId: varchar("deso_id", { length: 10 }).notNull(),
+  mappingMethod: varchar("mapping_method", { length: 40 }).notNull(),
+  overlapRatio: numeric("overlap_ratio"),
+  priorityWeight: numeric("priority_weight"),
+  rawData: jsonb("raw_data"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 });
@@ -114,6 +158,9 @@ export const schema = {
   municipalities,
   desoAreas,
   districts,
+  districtAliases,
+  namedDistricts,
+  namedDistrictDesoMap,
   neighborhoodScores,
   districtScores,
   demographics,

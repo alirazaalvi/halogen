@@ -1,3 +1,5 @@
+import { formatDisplayScore } from "@/lib/score-format";
+
 interface Props {
   value: number;
   size?: number;
@@ -40,7 +42,7 @@ export function CircularScore({ value, size = 180, label = "Family Score" }: Pro
       </svg>
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
-          <div className="font-display text-5xl tracking-tight">{value}</div>
+          <div className="font-display text-5xl tracking-tight">{formatDisplayScore(value)}</div>
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
         </div>
       </div>

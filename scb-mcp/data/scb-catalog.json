@@ -1,0 +1,1918 @@
+{
+  "generated_at": "2026-06-28T00:34:53.765Z",
+  "source_urls": [
+    "https://www.scb.se/vara-tjanster/oppna-data/",
+    "https://www.scb.se/vara-tjanster/oppna-data/pxwebapi/",
+    "https://www.statistikdatabasen.scb.se/pxweb/en/ssd/",
+    "https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101K",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/JO",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101P",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101B",
+    "https://www.scb.se/vara-tjanster/oppna-data/branschnyckeltal/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/NV",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101N",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101M",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101I",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/ME",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0701",
+    "https://www.scb.se/en/services/open-data-api/open-geodata/open-data-for-deso--demographic-statistical-areas/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/UF",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/EN",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/MI",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/FM",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101F",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101E",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Q",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/AA",
+    "https://www.scb.se/en/services/open-data-api/open-geodata/grid-statistics/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101S",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/HE",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BO",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101X",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/AM",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101H",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/LE",
+    "https://www.scb.se/en/services/open-data-api/open-geodata/localities/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101L",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101D",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101J",
+    "https://www.scb.se/vara-tjanster/oppna-data/myndighetsregistret/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0001",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/NR",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/HushallDesoTyp",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101A",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/OV",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101C",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoAldKon",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoMedKon",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoBakgrKon",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoCivilKon",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoLandKon",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0401",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/PR",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/OE",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101O",
+    "https://www.scb.se/en/services/open-data-api/open-geodata/open-data-for-regso--regional-statistical-areas/",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101G",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/HA",
+    "https://api.scb.se/OV0104/v1/doris/en/ssd/START/TK",
+    "https://www.scb.se/vara-tjanster/oppna-data/vardefulla-datamangder-hvd/"
+  ],
+  "entries": [
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101k",
+      "title": "Adoptees",
+      "source_family": "pxweb",
+      "surface": "BE0101K",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101K",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Adoptees.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101K",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101K"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-jo",
+      "title": "Agriculture, forestry and fishery",
+      "source_family": "pxweb",
+      "surface": "JO",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/JO",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Agriculture, forestry and fishery.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "JO",
+        "path_segments": [
+          "JO"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101p",
+      "title": "Asylum-seekers",
+      "source_family": "pxweb",
+      "surface": "BE0101P",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101P",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Asylum-seekers.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101P",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101P"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101b",
+      "title": "Average age",
+      "source_family": "pxweb",
+      "surface": "BE0101B",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101B",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Average age.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101B",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101B"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-branschnyckeltal",
+      "title": "Branschnyckeltal",
+      "source_family": "branschnyckeltal",
+      "surface": "Industry ratios",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/branschnyckeltal/",
+      "query_style": "metadata-only",
+      "formats": [
+        "html"
+      ],
+      "best_for": [
+        "industry-ratios",
+        "company-benchmarks"
+      ],
+      "priority": "medium",
+      "notes": "Official SCB industry ratio surface for company and sector comparisons.",
+      "language": "sv",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": []
+    },
+    {
+      "id": "scb-pxweb-node-nv",
+      "title": "Business activities",
+      "source_family": "pxweb",
+      "surface": "NV",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/NV",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Business activities.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "NV",
+        "path_segments": [
+          "NV"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101n",
+      "title": "Changes of citizenship",
+      "source_family": "pxweb",
+      "surface": "BE0101N",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101N",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Changes of citizenship.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101N",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101N"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101m",
+      "title": "Circular migration - Old tables, not updated",
+      "source_family": "pxweb",
+      "surface": "BE0101M",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101M",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Circular migration - Old tables, not updated.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101M",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101M"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101i",
+      "title": "Deaths",
+      "source_family": "pxweb",
+      "surface": "BE0101I",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101I",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Deaths.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101I",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101I"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-me",
+      "title": "Democracy",
+      "source_family": "pxweb",
+      "surface": "ME",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/ME",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Democracy.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "ME",
+        "path_segments": [
+          "ME"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0701",
+      "title": "Demographic Analysis (Demography)",
+      "source_family": "pxweb",
+      "surface": "BE0701",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0701",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE: Demographic Analysis (Demography).",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0701",
+        "path_segments": [
+          "BE",
+          "BE0701"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-open-geodata-deso",
+      "title": "DeSO - Demographic Statistical Areas",
+      "source_family": "open_geodata",
+      "surface": "DeSO",
+      "canonical_url": "https://www.scb.se/en/services/open-data-api/open-geodata/open-data-for-deso--demographic-statistical-areas/",
+      "query_style": "wfs-download",
+      "formats": [
+        "html",
+        "wfs",
+        "wms",
+        "geopackage"
+      ],
+      "best_for": [
+        "deso-boundaries",
+        "polygon-lookup",
+        "spatial-joins"
+      ],
+      "priority": "high",
+      "notes": "Preferred source for official DeSO geometry and versioned downloadable datasets.",
+      "capabilities_url": "https://geodata.scb.se/geoserver/stat/wms?service=wms&version=1.3.0&request=GetCapabilities",
+      "coverage": "Sweden",
+      "version_hint": "2025",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": [
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:DeSO_2025&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:DeSO_2018&outputFormat=geopackage"
+      ]
+    },
+    {
+      "id": "scb-pxweb-node-uf",
+      "title": "Education and research",
+      "source_family": "pxweb",
+      "surface": "UF",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/UF",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Education and research.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "UF",
+        "path_segments": [
+          "UF"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-en",
+      "title": "Energy",
+      "source_family": "pxweb",
+      "surface": "EN",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/EN",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Energy.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "EN",
+        "path_segments": [
+          "EN"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-mi",
+      "title": "Environment",
+      "source_family": "pxweb",
+      "surface": "MI",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/MI",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Environment.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "MI",
+        "path_segments": [
+          "MI"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-fm",
+      "title": "Financial markets",
+      "source_family": "pxweb",
+      "surface": "FM",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/FM",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Financial markets.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "FM",
+        "path_segments": [
+          "FM"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101f",
+      "title": "Foreign citizens",
+      "source_family": "pxweb",
+      "surface": "BE0101F",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101F",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Foreign citizens.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101F",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101F"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101e",
+      "title": "Foreign-born persons",
+      "source_family": "pxweb",
+      "surface": "BE0101E",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101E",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Foreign-born persons.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101E",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101E"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101q",
+      "title": "Foreign/Swedish background",
+      "source_family": "pxweb",
+      "surface": "BE0101Q",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Q",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Foreign/Swedish background.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101Q",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Q"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-aa",
+      "title": "General statistics",
+      "source_family": "pxweb",
+      "surface": "AA",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/AA",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: General statistics.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "AA",
+        "path_segments": [
+          "AA"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-grid-statistics",
+      "title": "Grid Statistics",
+      "source_family": "open_geodata",
+      "surface": "Grid statistics",
+      "canonical_url": "https://www.scb.se/en/services/open-data-api/open-geodata/grid-statistics/",
+      "query_style": "wfs-download",
+      "formats": [
+        "html",
+        "wfs",
+        "wms",
+        "geopackage"
+      ],
+      "best_for": [
+        "grid-population",
+        "spatial-statistics",
+        "map-analysis"
+      ],
+      "priority": "medium",
+      "notes": "Official source for gridded population and related spatial statistics.",
+      "capabilities_url": "https://geodata.scb.se/geoserver/stat/wms?service=wms&version=1.3.0&request=GetCapabilities",
+      "coverage": "Sweden",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": [
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2025&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2024&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2019&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2023&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2018&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2022&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2017&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2021&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2016&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2020&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:befolkning_1km_2015&outputFormat=geopackage"
+      ],
+      "version_hint": "2025"
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101s",
+      "title": "Household",
+      "source_family": "pxweb",
+      "surface": "BE0101S",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101S",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Household.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101S",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101S"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-he",
+      "title": "Household finances",
+      "source_family": "pxweb",
+      "surface": "HE",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/HE",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Household finances.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "HE",
+        "path_segments": [
+          "HE"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-bo",
+      "title": "Housing, construction and building",
+      "source_family": "pxweb",
+      "surface": "BO",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BO",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Housing, construction and building.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BO",
+        "path_segments": [
+          "BO"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101x",
+      "title": "Key figures",
+      "source_family": "pxweb",
+      "surface": "BE0101X",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101X",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Key figures.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101X",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101X"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-am",
+      "title": "Labour market",
+      "source_family": "pxweb",
+      "surface": "AM",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/AM",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Labour market.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "AM",
+        "path_segments": [
+          "AM"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101h",
+      "title": "Live births",
+      "source_family": "pxweb",
+      "surface": "BE0101H",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101H",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Live births.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101H",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101H"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-le",
+      "title": "Living conditions",
+      "source_family": "pxweb",
+      "surface": "LE",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/LE",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Living conditions.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "LE",
+        "path_segments": [
+          "LE"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-localities",
+      "title": "Localities",
+      "source_family": "open_geodata",
+      "surface": "Localities",
+      "canonical_url": "https://www.scb.se/en/services/open-data-api/open-geodata/localities/",
+      "query_style": "wfs-download",
+      "formats": [
+        "html",
+        "wfs",
+        "wms",
+        "geopackage"
+      ],
+      "best_for": [
+        "localities",
+        "built-up-areas",
+        "boundary-discovery"
+      ],
+      "priority": "medium",
+      "notes": "Official source for locality polygons and related metadata.",
+      "capabilities_url": "https://geodata.scb.se/geoserver/stat/wms?service=wms&version=1.3.0&request=GetCapabilities",
+      "coverage": "Sweden",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": [
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2023&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2005&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2020&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2000&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2018&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_1995&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2015&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_1990&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_2010&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:Tatorter_1980&outputFormat=geopackage"
+      ],
+      "version_hint": "2023"
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101l",
+      "title": "Married, divorced and widowed",
+      "source_family": "pxweb",
+      "surface": "BE0101L",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101L",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Married, divorced and widowed.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101L",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101L"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101d",
+      "title": "Mean population",
+      "source_family": "pxweb",
+      "surface": "BE0101D",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101D",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "population-statistics",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Mean population.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101D",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101D"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101j",
+      "title": "Migration - internal and external",
+      "source_family": "pxweb",
+      "surface": "BE0101J",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101J",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Migration - internal and external.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101J",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101J"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-myndighetsregistret",
+      "title": "Myndighetsregistret",
+      "source_family": "myndighetsregistret",
+      "surface": "Government agencies register",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/myndighetsregistret/",
+      "query_style": "metadata-only",
+      "formats": [
+        "html"
+      ],
+      "best_for": [
+        "agency-register",
+        "authority-discovery"
+      ],
+      "priority": "medium",
+      "notes": "Official SCB government agencies register surface.",
+      "language": "sv",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": []
+    },
+    {
+      "id": "scb-pxweb-node-be-be0001",
+      "title": "Name statistics",
+      "source_family": "pxweb",
+      "surface": "BE0001",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0001",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE: Name statistics.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0001",
+        "path_segments": [
+          "BE",
+          "BE0001"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-nr",
+      "title": "National accounts",
+      "source_family": "pxweb",
+      "surface": "NR",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/NR",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: National accounts.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "NR",
+        "path_segments": [
+          "NR"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-hushalldesotyp",
+      "title": "Number of households per region by type of household. Year 2011 - 2025",
+      "source_family": "pxweb",
+      "surface": "HushallDesoTyp",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/HushallDesoTyp",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Number of households per region by type of household. Year 2011 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/HushallDesoTyp",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "HushallDesoTyp"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "HushallDesoTyp",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Hushallstyp",
+            "text": "type of household",
+            "values_count": 6,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 15,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101a",
+      "title": "Number of inhabitants",
+      "source_family": "pxweb",
+      "surface": "BE0101A",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101A",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Number of inhabitants.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101A",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101A"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-ov",
+      "title": "Other",
+      "source_family": "pxweb",
+      "surface": "OV",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/OV",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Other.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "OV",
+        "path_segments": [
+          "OV"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be",
+      "title": "Population",
+      "source_family": "pxweb",
+      "surface": "BE",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "population-statistics",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Population.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE",
+        "path_segments": [
+          "BE"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101c",
+      "title": "Population density",
+      "source_family": "pxweb",
+      "surface": "BE0101C",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101C",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "population-statistics",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Population density.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101C",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101C"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-folkmdesoaldkon",
+      "title": "Population per region by age and sex. Year 2010 - 2025",
+      "source_family": "pxweb",
+      "surface": "FolkmDesoAldKon",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoAldKon",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "population-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Population per region by age and sex. Year 2010 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/FolkmDesoAldKon",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "FolkmDesoAldKon"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "FolkmDesoAldKon",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Alder",
+            "text": "age",
+            "values_count": 18,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "Kon",
+            "text": "sex",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 16,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-folkmdesomedkon",
+      "title": "Population per region by citizenship and sex. Year 2010 - 2025",
+      "source_family": "pxweb",
+      "surface": "FolkmDesoMedKon",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoMedKon",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "population-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Population per region by citizenship and sex. Year 2010 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/FolkmDesoMedKon",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "FolkmDesoMedKon"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "FolkmDesoMedKon",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Medborgarskap",
+            "text": "citizenship",
+            "values_count": 4,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "Kon",
+            "text": "sex",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 16,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-folkmdesobakgrkon",
+      "title": "Population per region by foreign or Swedish background and sex. Year 2010 - 2025",
+      "source_family": "pxweb",
+      "surface": "FolkmDesoBakgrKon",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoBakgrKon",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "population-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Population per region by foreign or Swedish background and sex. Year 2010 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/FolkmDesoBakgrKon",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "FolkmDesoBakgrKon"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "FolkmDesoBakgrKon",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "UtlBakgrund",
+            "text": "foreign/Swedish background",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "Kon",
+            "text": "sex",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 16,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-folkmdesocivilkon",
+      "title": "Population per region by marital status and sex. Year 2010 - 2025",
+      "source_family": "pxweb",
+      "surface": "FolkmDesoCivilKon",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoCivilKon",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "population-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Population per region by marital status and sex. Year 2010 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/FolkmDesoCivilKon",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "FolkmDesoCivilKon"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "FolkmDesoCivilKon",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Civilstand",
+            "text": "marital status",
+            "values_count": 5,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "Kon",
+            "text": "sex",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 16,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-table-be-be0101-be0101y-folkmdesolandkon",
+      "title": "Population per region by region of birth and sex. Year 2010 - 2025",
+      "source_family": "pxweb",
+      "surface": "FolkmDesoLandKon",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y/FolkmDesoLandKon",
+      "query_style": "pxweb-query",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "population-statistics",
+        "table-metadata"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the PxWeb lower-than-municipality population branch for DeSO/RegSO: Population per region by region of birth and sex. Year 2010 - 2025.",
+      "metadata": {
+        "node_kind": "table",
+        "pxweb_path": "BE/BE0101/BE0101Y/FolkmDesoLandKon",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y",
+          "FolkmDesoLandKon"
+        ],
+        "updated": "2026-03-24T08:00:00",
+        "table_id": "FolkmDesoLandKon",
+        "variables_summary": [
+          {
+            "code": "Region",
+            "text": "region",
+            "values_count": 19182,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Fodelseregion",
+            "text": "region of birth",
+            "values_count": 4,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "Kon",
+            "text": "sex",
+            "values_count": 3,
+            "time": false,
+            "elimination": true
+          },
+          {
+            "code": "ContentsCode",
+            "text": "observations",
+            "values_count": 1,
+            "time": false,
+            "elimination": false
+          },
+          {
+            "code": "Tid",
+            "text": "year",
+            "values_count": 16,
+            "time": true,
+            "elimination": false
+          }
+        ]
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0401",
+      "title": "Population projections",
+      "source_family": "pxweb",
+      "surface": "BE0401",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0401",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "population-statistics",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE: Population projections.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0401",
+        "path_segments": [
+          "BE",
+          "BE0401"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101",
+      "title": "Population statistics",
+      "source_family": "pxweb",
+      "surface": "BE0101",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "population-statistics",
+        "tree-browse"
+      ],
+      "priority": "high",
+      "notes": "Discovered from the SCB PxWeb tree at BE: Population statistics.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101",
+        "path_segments": [
+          "BE",
+          "BE0101"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-pr",
+      "title": "Prices and Consumption",
+      "source_family": "pxweb",
+      "surface": "PR",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/PR",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Prices and Consumption.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "PR",
+        "path_segments": [
+          "PR"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-oe",
+      "title": "Public finances",
+      "source_family": "pxweb",
+      "surface": "OE",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/OE",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Public finances.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "OE",
+        "path_segments": [
+          "OE"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101y",
+      "title": "Regional statistics at a lower level than municipality (DeSO/RegSO)",
+      "source_family": "pxweb",
+      "surface": "BE0101Y",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101Y",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "deso-list",
+        "deso-statistics",
+        "regso-list",
+        "regso-statistics",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Regional statistics at a lower level than municipality (DeSO/RegSO).",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101Y",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101Y"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101o",
+      "title": "Registered partnership",
+      "source_family": "pxweb",
+      "surface": "BE0101O",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101O",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Registered partnership.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101O",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101O"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-open-geodata-regso",
+      "title": "RegSO - Regional Statistical Areas",
+      "source_family": "open_geodata",
+      "surface": "RegSO",
+      "canonical_url": "https://www.scb.se/en/services/open-data-api/open-geodata/open-data-for-regso--regional-statistical-areas/",
+      "query_style": "wfs-download",
+      "formats": [
+        "html",
+        "wfs",
+        "wms",
+        "geopackage"
+      ],
+      "best_for": [
+        "regso-boundaries",
+        "regional-polygons",
+        "spatial-joins"
+      ],
+      "priority": "high",
+      "notes": "Official source for RegSO spatial datasets and related geometry discovery.",
+      "capabilities_url": "https://geodata.scb.se/geoserver/stat/wms?service=wms&version=1.3.0&request=GetCapabilities",
+      "coverage": "Sweden",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": [
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:RegSO_2025&outputFormat=geopackage",
+        "https://geodata.scb.se/geoserver/stat/wfs?service=WFS&REQUEST=GetFeature&version=1.1.0&TYPENAMES=stat:RegSO_2020&outputFormat=geopackage"
+      ],
+      "version_hint": "2025"
+    },
+    {
+      "id": "scb-open-data-root",
+      "title": "SCB Open Data Root",
+      "source_family": "open_data_root",
+      "surface": "Open data",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/",
+      "query_style": "landing-page",
+      "formats": [
+        "html"
+      ],
+      "best_for": [
+        "catalog-root",
+        "surface-discovery"
+      ],
+      "priority": "high",
+      "notes": "Top-level discovery page for all official SCB open-data surfaces.",
+      "language": "sv",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": []
+    },
+    {
+      "id": "scb-open-geodata-root",
+      "title": "SCB Open Geodata",
+      "source_family": "open_geodata",
+      "surface": "Open geodata",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/oppna-geodata/",
+      "query_style": "wms-wfs",
+      "formats": [
+        "html",
+        "wfs",
+        "wms",
+        "geopackage"
+      ],
+      "best_for": [
+        "geometry",
+        "spatial-layers",
+        "wfs",
+        "wms",
+        "download-discovery"
+      ],
+      "priority": "high",
+      "notes": "Preferred official SCB surface for DeSO, RegSO, grids, localities, and other spatial datasets.",
+      "metadata": {
+        "wfs_capabilities_url": "https://geodata.scb.se/geoserver/stat/wfs?service=wfs&version=1.1.0&request=GetCapabilities",
+        "wms_capabilities_url": "https://geodata.scb.se/geoserver/stat/wms?service=wms&version=1.3.0&request=GetCapabilities"
+      },
+      "language": "en",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": []
+    },
+    {
+      "id": "scb-pxweb-api",
+      "title": "SCB PxWeb API",
+      "source_family": "pxweb",
+      "surface": "Statistical database",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/pxwebapi/",
+      "query_style": "pxweb-query",
+      "formats": [
+        "html",
+        "json"
+      ],
+      "best_for": [
+        "official-statistics",
+        "tabular-statistics",
+        "metadata-discovery"
+      ],
+      "priority": "high",
+      "notes": "Preferred official SCB surface for structured tabular statistics and variable-driven queries.",
+      "language": "en",
+      "metadata": {
+        "api_root": "https://api.scb.se/OV0104/v1/doris/en/ssd/START",
+        "database_root": "https://www.statistikdatabasen.scb.se/pxweb/en/ssd/"
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-be-be0101-be0101g",
+      "title": "Summary of vital events",
+      "source_family": "pxweb",
+      "surface": "BE0101G",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101G",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at BE/BE0101: Summary of vital events.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "BE/BE0101/BE0101G",
+        "path_segments": [
+          "BE",
+          "BE0101",
+          "BE0101G"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-ha",
+      "title": "Trade in goods and services",
+      "source_family": "pxweb",
+      "surface": "HA",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/HA",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Trade in goods and services.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "HA",
+        "path_segments": [
+          "HA"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-pxweb-node-tk",
+      "title": "Transport and communications",
+      "source_family": "pxweb",
+      "surface": "TK",
+      "canonical_url": "https://api.scb.se/OV0104/v1/doris/en/ssd/START/TK",
+      "query_style": "pxweb-metadata",
+      "formats": [
+        "json"
+      ],
+      "best_for": [
+        "pxweb-discovery",
+        "tree-browse"
+      ],
+      "priority": "medium",
+      "notes": "Discovered from the SCB PxWeb tree at START: Transport and communications.",
+      "metadata": {
+        "node_kind": "folder",
+        "pxweb_path": "TK",
+        "path_segments": [
+          "TK"
+        ],
+        "updated": null
+      },
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table."
+    },
+    {
+      "id": "scb-vardefulla-datamangder",
+      "title": "Vardefulla datamangder",
+      "source_family": "vardefulla_datamangder",
+      "surface": "High-value datasets",
+      "canonical_url": "https://www.scb.se/vara-tjanster/oppna-data/vardefulla-datamangder-hvd/",
+      "query_style": "metadata-only",
+      "formats": [
+        "html"
+      ],
+      "best_for": [
+        "high-value-datasets",
+        "eu-hvd-discovery"
+      ],
+      "priority": "medium",
+      "notes": "Official SCB high-value dataset landing page for EU-classified open-data sets.",
+      "language": "sv",
+      "rate_limit_notes": "SCB states a limit of 10 requests per 10 seconds from one IP and a maximum of 100,000 values per table.",
+      "download_urls": []
+    }
+  ]
+}

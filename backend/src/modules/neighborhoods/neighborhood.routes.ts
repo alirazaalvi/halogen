@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -12,6 +13,107 @@ import {
 } from "../../db/schema";
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
+import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
+
+// #region debug-point A:akalla-neighborhood-detail
+const akallaDebugConfig = (() => {
+  let debugServerUrl = "http://127.0.0.1:7777/event";
+  let debugSessionId = "akalla-data";
+
+  try {
+    const envFile = readFileSync(
+      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/akalla-data.env",
+      "utf8",
+    );
+    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
+    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
+  } catch {}
+
+  return { debugServerUrl, debugSessionId };
+})();
+// #endregion
+
+// #region debug-point A:district-ui-config
+const districtUiDebugConfig = (() => {
+  let debugServerUrl = "http://127.0.0.1:7777/event";
+  let debugSessionId = "district-ui-data";
+
+  try {
+    const envFile = readFileSync(
+      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/district-ui-data.env",
+      "utf8",
+    );
+    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
+    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
+  } catch {}
+
+  return { debugServerUrl, debugSessionId };
+})();
+
+const districtUiDebugTargetIds = new Set([
+  "ND-0184-hagalund",
+  "ND-0183-hallonbergen",
+  "ND-0183-rissne",
+]);
+
+function reportDistrictUiDebug(
+  hypothesisId: string,
+  msg: string,
+  data: Record<string, unknown>,
+): void {
+  fetch(districtUiDebugConfig.debugServerUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: districtUiDebugConfig.debugSessionId,
+      runId: "pre-fix",
+      hypothesisId,
+      location: "src/modules/neighborhoods/neighborhood.routes.ts",
+      msg,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
+// #region debug-point A:rissne-school-boundary-config
+const rissneSchoolDebugConfig = (() => {
+  let debugServerUrl = "http://127.0.0.1:7777/event";
+  let debugSessionId = "rissne-school-boundary";
+
+  try {
+    const envFile = readFileSync(
+      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/rissne-school-boundary.env",
+      "utf8",
+    );
+    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
+    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
+  } catch {}
+
+  return { debugServerUrl, debugSessionId };
+})();
+
+function reportRissneSchoolDebug(
+  hypothesisId: string,
+  msg: string,
+  data: Record<string, unknown>,
+): void {
+  fetch(rissneSchoolDebugConfig.debugServerUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: rissneSchoolDebugConfig.debugSessionId,
+      runId: "pre-fix",
+      hypothesisId,
+      location: "src/modules/neighborhoods/neighborhood.routes.ts",
+      msg,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
 
 function toSlug(value: string) {
   return value
@@ -135,7 +237,58 @@ function fallbackFutureProjects(areaName: string, score: ReturnType<typeof compl
   }));
 }
 
-async function getAreaDetails(areaId: string) {
+type AreaType = "namedDistrict" | "district" | "deso";
+
+async function getAreaDetails(areaId: string): Promise<{
+  area: {
+    id: string;
+    name: string | null;
+    municipality: string | null;
+    population: number | null;
+    type: string;
+    lat: number | null;
+    lng: number | null;
+    sourceType: string | null;
+    legacyDistrictId: string | null;
+  };
+  areaType: AreaType;
+} | null> {
+  const namedDistrictResult = await pool.query(
+    `SELECT
+       nd.id,
+       nd.name,
+       m.name AS municipality,
+       NULL::int AS population,
+       'district' AS type,
+       nd.source_type AS "sourceType",
+       nd.legacy_district_id AS "legacyDistrictId",
+       ST_Y(nd.centroid) AS lat,
+       ST_X(nd.centroid) AS lng
+     FROM named_districts nd
+     LEFT JOIN municipalities m ON m.id = nd.municipality_id
+     WHERE nd.id = $1
+     LIMIT 1`,
+    [areaId],
+  );
+
+  if (namedDistrictResult.rows.length > 0) {
+    const row = namedDistrictResult.rows[0];
+    return {
+      area: {
+        id: String(row.id),
+        name: row.name ? String(row.name) : null,
+        municipality: row.municipality ? String(row.municipality) : null,
+        population: row.population == null ? null : Number(row.population),
+        type: String(row.type),
+        sourceType: row.sourceType ? String(row.sourceType) : null,
+        legacyDistrictId: row.legacyDistrictId ? String(row.legacyDistrictId) : null,
+        lat: row.lat == null ? null : Number(row.lat),
+        lng: row.lng == null ? null : Number(row.lng),
+      },
+      areaType: "namedDistrict",
+    };
+  }
+
   // Try to find as district first (priority for Stockholm neighborhoods)
   const districtResult = await db
     .select({
@@ -153,7 +306,16 @@ async function getAreaDetails(areaId: string) {
     .limit(1);
 
   if (districtResult.length > 0) {
-    return { area: districtResult[0], isDistrict: true };
+    const aliasMap = await getPrimaryDistrictAliasMap([areaId]);
+    return {
+      area: {
+        ...districtResult[0],
+        name: aliasMap.get(areaId) ?? districtResult[0].name,
+        sourceType: null,
+        legacyDistrictId: null,
+      },
+      areaType: "district",
+    };
   }
 
   // Fallback to DESO area
@@ -173,14 +335,48 @@ async function getAreaDetails(areaId: string) {
     .limit(1);
 
   if (desoResult.length > 0) {
-    return { area: desoResult[0], isDistrict: false };
+    return {
+      area: {
+        ...desoResult[0],
+        sourceType: null,
+        legacyDistrictId: null,
+      },
+      areaType: "deso",
+    };
   }
 
   return null;
 }
 
-async function getScores(areaId: string, isDistrict: boolean) {
-  if (isDistrict) {
+async function getScores(areaId: string, areaType: AreaType) {
+  if (areaType === "namedDistrict") {
+    const result = await pool.query(
+      `SELECT
+         SUM(ns.overall_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.overall_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "overallScore",
+         SUM(ns.demographics_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.demographics_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "demographicsScore",
+         SUM(ns.housing_market_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.housing_market_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "housingMarketScore",
+         SUM(ns.transport_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.transport_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "transportScore",
+         SUM(ns.schools_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.schools_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "schoolsScore",
+         SUM(ns.safety_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.safety_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "safetyScore",
+         SUM(ns.green_areas_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.green_areas_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "greenAreasScore",
+         SUM(ns.future_growth_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.future_growth_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "futureGrowthScore"
+       FROM named_district_deso_map ndm
+       JOIN neighborhood_scores ns ON ns.deso_id = ndm.deso_id
+       WHERE ndm.district_id = $1`,
+      [areaId],
+    );
+    return result.rows[0] || {};
+  }
+
+  if (areaType === "district") {
     const result = await db
       .select()
       .from(districtScores)
@@ -215,35 +411,74 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
 
     const limit = query.limit ?? 100;
 
-    // Get all districts from all Stockholm County municipalities
-    const allDistrics = await db
-      .select({
-        id: districts.id,
-        name: districts.name,
-        municipality: municipalities.name,
-        overall: districtScores.overallScore,
-        schools: districtScores.schoolsScore,
-        transport: districtScores.transportScore,
-        green: districtScores.greenAreasScore,
-        type: sql<string>`'district'`,
-      })
-      .from(districts)
-      .innerJoin(districtScores, eq(districtScores.districtId, districts.id))
-      .leftJoin(municipalities, eq(districts.municipalityId, municipalities.id))
-      .orderBy(desc(districtScores.overallScore))
-      .limit(limit);
+    const namedDistrictRows = await pool.query(
+      `SELECT
+         nd.id,
+         nd.name,
+         m.name AS municipality,
+         SUM(ns.overall_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.overall_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS overall,
+         SUM(ns.schools_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.schools_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS schools,
+         SUM(ns.transport_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.transport_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS transport,
+         SUM(ns.green_areas_score * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.green_areas_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS green
+       FROM named_districts nd
+       LEFT JOIN municipalities m ON m.id = nd.municipality_id
+       LEFT JOIN named_district_deso_map ndm ON ndm.district_id = nd.id
+       LEFT JOIN neighborhood_scores ns ON ns.deso_id = ndm.deso_id
+       GROUP BY nd.id, nd.name, m.name
+       ORDER BY overall DESC NULLS LAST, nd.name ASC
+       LIMIT $1`,
+      [limit],
+    );
 
-    const results = allDistrics.map((row) => ({
-      slug: toSlug(row.name ?? row.id),
-      id: row.id,
-      type: row.type,
-      name: row.name ?? row.id,
-      region: row.municipality ?? "Unknown",
+    let results = namedDistrictRows.rows.map((row) => ({
+      slug: toSlug(String(row.name ?? row.id)),
+      id: String(row.id),
+      type: "district",
+      name: String(row.name ?? row.id),
+      region: row.municipality ? String(row.municipality) : "Unknown",
       overall: row.overall,
       schools: row.schools,
       commute: row.transport,
       green: row.green,
     }));
+
+    if (results.length === 0) {
+      const allDistrics = await db
+        .select({
+          id: districts.id,
+          name: districts.name,
+          municipality: municipalities.name,
+          overall: districtScores.overallScore,
+          schools: districtScores.schoolsScore,
+          transport: districtScores.transportScore,
+          green: districtScores.greenAreasScore,
+          type: sql<string>`'district'`,
+        })
+        .from(districts)
+        .innerJoin(districtScores, eq(districtScores.districtId, districts.id))
+        .leftJoin(municipalities, eq(districts.municipalityId, municipalities.id))
+        .where(sql`COALESCE(${districts.type}, '') <> 'municipality'`)
+        .orderBy(desc(districtScores.overallScore))
+        .limit(limit);
+
+      const aliasMap = await getPrimaryDistrictAliasMap(allDistrics.map((row) => row.id));
+
+      results = allDistrics.map((row) => ({
+        slug: toSlug(aliasMap.get(row.id) ?? row.name ?? row.id),
+        id: row.id,
+        type: row.type,
+        name: aliasMap.get(row.id) ?? row.name ?? row.id,
+        region: row.municipality ?? "Unknown",
+        overall: row.overall,
+        schools: row.schools,
+        commute: row.transport,
+        green: row.green,
+      }));
+    }
 
     return sendApiSuccess(reply, {
       results,
@@ -263,45 +498,502 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
       return sendApiError(reply, 404, "NOT_FOUND", "Area not found");
     }
 
-    const { area, isDistrict } = areaData;
-    const scores = await getScores(deso_id, isDistrict);
+    const { area, areaType } = areaData;
+    const scores = await getScores(deso_id, areaType);
 
     const areaLng = Number(area.lng ?? 0);
     const areaLat = Number(area.lat ?? 0);
 
+    // #region debug-point A:district-ui-area
+    if (districtUiDebugTargetIds.has(deso_id)) {
+      reportDistrictUiDebug("A", "[DEBUG] District UI area resolved", {
+        districtId: deso_id,
+        areaType,
+        areaName: area.name,
+        municipality: area.municipality,
+        areaLat,
+        areaLng,
+      });
+    }
+    // #endregion
+
     // Radius for school proximity search: larger for districts (city-wide areas), smaller for deso
+    const isDistrict = areaType !== "deso";
+    const useLegacyDistrictSchoolFallback =
+      areaType === "namedDistrict" &&
+      area.sourceType === "seeded_centroid" &&
+      area.legacyDistrictId != null;
     const schoolRadiusMeters = isDistrict ? 5000 : 2000;
+    const schoolRadiusDegrees = schoolRadiusMeters / 111_320;
+
+    // #region debug-point A:rissne-school-entry
+    if (deso_id === "ND-0183-rissne") {
+      reportRissneSchoolDebug("A", "[DEBUG] Rissne school selection entry", {
+        districtId: deso_id,
+        areaType,
+        areaName: area.name,
+        areaLat,
+        areaLng,
+        sourceType: area.sourceType,
+        legacyDistrictId: area.legacyDistrictId,
+        useLegacyDistrictSchoolFallback,
+        schoolRadiusMeters,
+      });
+    }
+    // #endregion
+
+    // #region debug-point B:akalla-before-schools
+    if (deso_id === "ND-0180-akalla") {
+      fetch(akallaDebugConfig.debugServerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: akallaDebugConfig.debugSessionId,
+          runId: "pre-fix",
+          hypothesisId: "B",
+          location: "src/modules/neighborhoods/neighborhood.routes.ts",
+          msg: "[DEBUG] Akalla before schools query",
+          data: {
+            areaType,
+            schoolRadiusMeters,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
 
     const schoolsRes = await pool.query(
-      `SELECT
-         name,
-         COALESCE(address, '') AS address,
-         COALESCE(student_count, 0) AS student_count,
-         COALESCE(performance, 0) AS performance,
-         ST_Y(coordinates) AS lat,
-         ST_X(coordinates) AS lng,
-         COALESCE(source_links, '[]'::jsonb) AS source_links,
-         ST_DistanceSphere(
-           coordinates,
-           ST_SetSRID(ST_MakePoint($1, $2), 4326)
-         ) AS distance_meters
-       FROM schools
-       WHERE coordinates IS NOT NULL
-         AND ST_DWithin(
-           coordinates::geography,
-           ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-           $3
-         )
-       ORDER BY distance_meters ASC, performance DESC
-       LIMIT 8`,
-      [areaLng, areaLat, schoolRadiusMeters],
+      useLegacyDistrictSchoolFallback
+        ? `WITH district_geo_schools AS (
+             SELECT DISTINCT ON (school_identity)
+               s.name,
+               COALESCE(s.address, '') AS address,
+               COALESCE(s.student_count, 0) AS student_count,
+               COALESCE(s.performance, 0) AS performance,
+               ST_Y(s.coordinates) AS lat,
+               ST_X(s.coordinates) AS lng,
+               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
+               ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             JOIN named_districts nd ON nd.id = $1
+             WHERE s.district_id = $2
+               AND s.coordinates IS NOT NULL
+               AND ST_DWithin(s.coordinates::geography, nd.centroid::geography, $3)
+             ORDER BY
+               school_identity,
+               distance_meters ASC,
+               performance DESC,
+               student_count DESC
+           ),
+           district_placeholders AS (
+             SELECT DISTINCT ON (school_identity)
+               s.name,
+               COALESCE(s.address, '') AS address,
+               COALESCE(s.student_count, 0) AS student_count,
+               COALESCE(s.performance, 0) AS performance,
+               NULL::double precision AS lat,
+               NULL::double precision AS lng,
+               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
+               NULL::double precision AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             WHERE s.district_id = $2
+               AND s.coordinates IS NULL
+               AND NOT EXISTS (SELECT 1 FROM district_geo_schools)
+             ORDER BY
+               school_identity,
+               performance DESC,
+               student_count DESC
+           ),
+           fallback_deso_schools AS (
+             SELECT DISTINCT ON (school_identity)
+               s.name,
+               COALESCE(s.address, '') AS address,
+               COALESCE(s.student_count, 0) AS student_count,
+               COALESCE(s.performance, 0) AS performance,
+               ST_Y(s.coordinates) AS lat,
+               ST_X(s.coordinates) AS lng,
+               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
+               ST_Distance(
+                 s.coordinates::geography,
+                 COALESCE(nd.geometry, nd.centroid)::geography
+               ) AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             JOIN named_districts nd ON nd.id = $1
+             JOIN named_district_deso_map ndm
+               ON ndm.district_id = nd.id
+              AND ndm.deso_id = s.deso_id
+             WHERE s.coordinates IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM district_geo_schools)
+               AND NOT EXISTS (SELECT 1 FROM district_placeholders)
+             ORDER BY
+               school_identity,
+               distance_meters ASC,
+               performance DESC,
+               student_count DESC
+           ),
+           ranked_schools AS (
+             SELECT * FROM district_geo_schools
+             UNION ALL
+             SELECT * FROM district_placeholders
+             UNION ALL
+             SELECT * FROM fallback_deso_schools
+           )
+           SELECT
+             name,
+             address,
+             student_count,
+             performance,
+             lat,
+             lng,
+             source_links,
+             distance_meters
+           FROM ranked_schools
+           ORDER BY
+             (distance_meters IS NULL) ASC,
+             distance_meters ASC NULLS LAST,
+             performance DESC
+           LIMIT 8`
+        : areaType === "namedDistrict"
+        ? `WITH ranked_schools AS (
+             SELECT DISTINCT ON (school_identity)
+               s.name,
+               COALESCE(s.address, '') AS address,
+               COALESCE(s.student_count, 0) AS student_count,
+               COALESCE(s.performance, 0) AS performance,
+               ST_Y(s.coordinates) AS lat,
+               ST_X(s.coordinates) AS lng,
+               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
+               ST_Distance(
+                 s.coordinates::geography,
+                 COALESCE(nd.geometry, nd.centroid)::geography
+               ) AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             JOIN named_districts nd ON nd.id = $1
+             JOIN named_district_deso_map ndm
+               ON ndm.district_id = nd.id
+              AND ndm.deso_id = s.deso_id
+             WHERE s.coordinates IS NOT NULL
+             ORDER BY
+               school_identity,
+               distance_meters ASC,
+               performance DESC,
+               student_count DESC
+           )
+           SELECT
+             name,
+             address,
+             student_count,
+             performance,
+             lat,
+             lng,
+             source_links,
+             distance_meters
+           FROM ranked_schools
+           ORDER BY distance_meters ASC, performance DESC
+           LIMIT 8`
+        : isDistrict
+          ? `WITH ranked_schools AS (
+             SELECT DISTINCT ON (school_identity)
+               s.name,
+               COALESCE(s.address, '') AS address,
+               COALESCE(s.student_count, 0) AS student_count,
+               COALESCE(s.performance, 0) AS performance,
+               ST_Y(s.coordinates) AS lat,
+               ST_X(s.coordinates) AS lng,
+               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
+               ST_Distance(
+                 s.coordinates::geography,
+                 COALESCE(d.geometry, d.centroid)::geography
+               ) AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             JOIN districts d ON d.id = $1
+             WHERE s.coordinates IS NOT NULL
+               AND s.coordinates && ST_Expand(COALESCE(d.geometry, d.centroid), $3)
+               AND ST_DWithin(
+                 s.coordinates::geography,
+                 COALESCE(d.geometry, d.centroid)::geography,
+                 $2
+               )
+             ORDER BY
+               school_identity,
+               distance_meters ASC,
+               performance DESC,
+               student_count DESC
+           )
+           SELECT
+             name,
+             address,
+             student_count,
+             performance,
+             lat,
+             lng,
+             source_links,
+             distance_meters
+           FROM ranked_schools
+           ORDER BY distance_meters ASC, performance DESC
+           LIMIT 8`
+          : `WITH ranked_schools AS (
+             SELECT DISTINCT ON (school_identity)
+               name,
+               COALESCE(address, '') AS address,
+               COALESCE(student_count, 0) AS student_count,
+               COALESCE(performance, 0) AS performance,
+               ST_Y(coordinates) AS lat,
+               ST_X(coordinates) AS lng,
+               COALESCE(source_links, '[]'::jsonb) AS source_links,
+               ST_DistanceSphere(
+                 coordinates,
+                 ST_SetSRID(ST_MakePoint($1, $2), 4326)
+               ) AS distance_meters,
+               school_identity
+             FROM (
+               SELECT
+                 s.*,
+                 COALESCE(
+                   NULLIF(s.school_unit_code, ''),
+                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
+                 ) AS school_identity
+               FROM schools s
+             ) s
+             WHERE s.coordinates IS NOT NULL
+               AND ST_DWithin(
+                 s.coordinates::geography,
+                 ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                 $3
+               )
+             ORDER BY
+               school_identity,
+               distance_meters ASC,
+               performance DESC,
+               student_count DESC
+           )
+           SELECT
+             name,
+             address,
+             student_count,
+             performance,
+             lat,
+             lng,
+             source_links,
+             distance_meters
+           FROM ranked_schools
+           ORDER BY distance_meters ASC, performance DESC
+           LIMIT 8`,
+      useLegacyDistrictSchoolFallback
+        ? [deso_id, area.legacyDistrictId, Math.min(schoolRadiusMeters, 4000)]
+        : areaType === "namedDistrict"
+          ? [deso_id]
+        : isDistrict
+          ? [deso_id, schoolRadiusMeters, schoolRadiusDegrees]
+          : [areaLng, areaLat, schoolRadiusMeters],
     );
+
+    // #region debug-point B:rissne-school-candidates
+    if (deso_id === "ND-0183-rissne") {
+      const candidateSummaryRes = await pool.query(
+        `WITH named_matches AS (
+           SELECT
+             s.name,
+             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_Distance(s.coordinates::geography, nd.centroid::geography) END AS distance_meters,
+             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_Y(s.coordinates) END AS lat,
+             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_X(s.coordinates) END AS lng
+           FROM schools s
+           JOIN named_districts nd ON nd.id = $1
+           WHERE s.district_id = $2
+             AND s.name ILIKE '%' || nd.name || '%'
+         ),
+         nearby_real_schools AS (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           )
+             s.name,
+             ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters,
+             ST_Y(s.coordinates) AS lat,
+             ST_X(s.coordinates) AS lng
+           FROM schools s
+           JOIN named_districts nd ON nd.id = $1
+           WHERE s.coordinates IS NOT NULL
+             AND ST_DWithin(s.coordinates::geography, nd.centroid::geography, $3)
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+             distance_meters ASC
+         ),
+         fallback_deso_schools AS (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           )
+             s.name,
+             s.deso_id,
+             ST_Distance(s.coordinates::geography, COALESCE(nd.geometry, nd.centroid)::geography) AS distance_meters,
+             ST_Y(s.coordinates) AS lat,
+             ST_X(s.coordinates) AS lng
+           FROM schools s
+           JOIN named_districts nd ON nd.id = $1
+           JOIN named_district_deso_map ndm
+             ON ndm.district_id = nd.id
+            AND ndm.deso_id = s.deso_id
+           WHERE s.coordinates IS NOT NULL
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+             distance_meters ASC
+         )
+         SELECT jsonb_build_object(
+           'namedMatches', (
+             SELECT COALESCE(
+               jsonb_agg(
+                 jsonb_build_object(
+                   'name', name,
+                   'distance', distance_meters,
+                   'lat', lat,
+                   'lng', lng
+                 )
+               ),
+               '[]'::jsonb
+             )
+             FROM (SELECT * FROM named_matches ORDER BY distance_meters ASC NULLS LAST, name ASC LIMIT 5) named_sample
+           ),
+           'nearbyRealSchools', (
+             SELECT COALESCE(
+               jsonb_agg(
+                 jsonb_build_object(
+                   'name', name,
+                   'distance', distance_meters,
+                   'lat', lat,
+                   'lng', lng
+                 )
+               ),
+               '[]'::jsonb
+             )
+             FROM (SELECT * FROM nearby_real_schools ORDER BY distance_meters ASC, name ASC LIMIT 8) nearby_sample
+           ),
+           'fallbackDesoSchools', (
+             SELECT COALESCE(
+               jsonb_agg(
+                 jsonb_build_object(
+                   'name', name,
+                   'desoId', deso_id,
+                   'distance', distance_meters,
+                   'lat', lat,
+                   'lng', lng
+                 )
+               ),
+               '[]'::jsonb
+             )
+             FROM (SELECT * FROM fallback_deso_schools ORDER BY distance_meters ASC, name ASC LIMIT 5) fallback_sample
+           )
+         ) AS payload`,
+        [deso_id, area.legacyDistrictId, Math.min(schoolRadiusMeters, 3000)],
+      );
+
+      reportRissneSchoolDebug("B", "[DEBUG] Rissne school candidate sets", {
+        districtId: deso_id,
+        payload: candidateSummaryRes.rows[0]?.payload ?? null,
+      });
+    }
+    // #endregion
+
+    // #region debug-point C:akalla-after-schools
+    if (deso_id === "ND-0180-akalla") {
+      fetch(akallaDebugConfig.debugServerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: akallaDebugConfig.debugSessionId,
+          runId: "pre-fix",
+          hypothesisId: "C",
+          location: "src/modules/neighborhoods/neighborhood.routes.ts",
+          msg: "[DEBUG] Akalla after schools query",
+          data: {
+            schoolRows: schoolsRes.rows.length,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+
     const transportRadiusMeters = isDistrict ? 8000 : 4000;
     const addressRadiusMeters = isDistrict ? 8000 : 3500;
 
     const demographicsRes = await pool.query(
-      isDistrict
-        ? `SELECT
+      areaType === "namedDistrict"
+        ? `WITH latest_year AS (
+             SELECT MAX(d.year) AS year
+             FROM demographics d
+             JOIN named_district_deso_map ndm ON ndm.deso_id = d.deso_id
+             WHERE ndm.district_id = $1
+           )
+           SELECT
+             COALESCE(SUM(d.population_total), 0)::int AS population_total,
+             SUM(d.population_growth * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS population_growth,
+             SUM(d.median_income * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS median_income,
+             SUM(d.higher_edu_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS higher_edu_pct,
+             SUM(d.families_with_kids_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS families_with_kids_pct,
+             SUM(d.foreign_born_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS foreign_born_pct,
+             ly.year,
+             COALESCE(
+               jsonb_agg(DISTINCT src.link) FILTER (WHERE src.link IS NOT NULL),
+               '[]'::jsonb
+             ) AS source_links
+           FROM latest_year ly
+           JOIN named_district_deso_map ndm ON ndm.district_id = $1
+           JOIN demographics d ON d.deso_id = ndm.deso_id AND d.year = ly.year
+           LEFT JOIN LATERAL jsonb_array_elements(COALESCE(d.source_links, '[]'::jsonb)) src(link) ON TRUE
+           GROUP BY ly.year
+           LIMIT 1`
+        : isDistrict
+          ? `SELECT
            population_total,
            population_growth,
            median_income,
@@ -314,7 +1006,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
          WHERE district_id = $1
          ORDER BY year DESC
          LIMIT 1`
-        : `SELECT
+          : `SELECT
            population_total,
            population_growth,
            median_income,
@@ -331,8 +1023,24 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     );
 
     const projectsRes = await pool.query(
-      isDistrict
+      areaType === "namedDistrict"
         ? `SELECT
+           title,
+           COALESCE(project_type, 'infrastructure') AS project_type,
+           COALESCE(confidence, 70) AS confidence,
+           EXTRACT(YEAR FROM NOW())::int + 1 AS year,
+           COALESCE(status, 'planned') AS status,
+           COALESCE(source_links, '[]'::jsonb) AS source_links
+         FROM future_projects
+         WHERE deso_id IN (
+           SELECT deso_id
+           FROM named_district_deso_map
+           WHERE district_id = $1
+         )
+         ORDER BY confidence DESC, title ASC
+         LIMIT 10`
+        : isDistrict
+          ? `SELECT
            title,
            COALESCE(project_type, 'infrastructure') AS project_type,
            COALESCE(confidence, 70) AS confidence,
@@ -343,7 +1051,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
          WHERE district_id = $1
          ORDER BY confidence DESC, title ASC
          LIMIT 10`
-        : `SELECT
+          : `SELECT
            title,
            COALESCE(project_type, 'infrastructure') AS project_type,
            COALESCE(confidence, 70) AS confidence,
@@ -358,13 +1066,31 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     );
 
     const crimeRes = await pool.query(
-      isDistrict
-        ? `SELECT year, incident_count, trend
+      areaType === "namedDistrict"
+        ? `SELECT
+             year,
+             SUM(incident_count)::int AS incident_count,
+             CASE
+               WHEN COUNT(*) FILTER (WHERE trend = 'up') > COUNT(*) FILTER (WHERE trend = 'down') THEN 'up'
+               WHEN COUNT(*) FILTER (WHERE trend = 'down') > COUNT(*) FILTER (WHERE trend = 'up') THEN 'down'
+               ELSE 'stable'
+             END AS trend
+           FROM crime_stats
+           WHERE deso_id IN (
+             SELECT deso_id
+             FROM named_district_deso_map
+             WHERE district_id = $1
+           )
+           GROUP BY year
+           ORDER BY year DESC
+           LIMIT 5`
+        : isDistrict
+          ? `SELECT year, incident_count, trend
        FROM crime_stats
        WHERE district_id = $1
        ORDER BY year DESC
        LIMIT 5`
-        : `SELECT year, incident_count, trend
+          : `SELECT year, incident_count, trend
        FROM crime_stats
        WHERE deso_id = $1
        ORDER BY year DESC
@@ -410,11 +1136,19 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     );
 
     const projectsCountRes = await pool.query(
-      isDistrict
+      areaType === "namedDistrict"
         ? `SELECT COUNT(*)::int AS project_count
+         FROM future_projects
+         WHERE deso_id IN (
+           SELECT deso_id
+           FROM named_district_deso_map
+           WHERE district_id = $1
+         )`
+        : isDistrict
+          ? `SELECT COUNT(*)::int AS project_count
        FROM future_projects
        WHERE district_id = $1`
-        : `SELECT COUNT(*)::int AS project_count
+          : `SELECT COUNT(*)::int AS project_count
        FROM future_projects
        WHERE deso_id = $1`,
       [deso_id],
@@ -466,6 +1200,62 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
             lng: area.lng != null ? Number(area.lng) + (index === 0 ? -0.002 : 0.002) : null,
             inspection: normalizedScores.schools >= 80 ? "Approved" : "Needs review",
           }));
+
+    // #region debug-point B:district-ui-schools
+    if (districtUiDebugTargetIds.has(deso_id)) {
+      reportDistrictUiDebug("B", "[DEBUG] District UI schools built", {
+        districtId: deso_id,
+        schoolQueryRows: schoolsRes.rows.length,
+        schoolsFromDb: schoolsFromDb.length,
+        schoolsReturned: schools.length,
+        firstSchool: schools[0]?.name ?? null,
+        firstSchoolLat: schools[0]?.lat ?? null,
+        firstSchoolLng: schools[0]?.lng ?? null,
+        firstSchoolDistance: schools[0]?.distance ?? null,
+      });
+    }
+    // #endregion
+
+    // #region debug-point A:akalla-neighborhood-detail
+    if (deso_id === "ND-0180-akalla") {
+      fetch(akallaDebugConfig.debugServerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: akallaDebugConfig.debugSessionId,
+          runId: "pre-fix",
+          hypothesisId: "A",
+          location: "src/modules/neighborhoods/neighborhood.routes.ts",
+          msg: "[DEBUG] Akalla neighborhood detail payload",
+          data: {
+            areaType,
+            areaName: area.name,
+            schoolQueryRows: schoolsRes.rows.length,
+            schoolsFromDb: schoolsFromDb.length,
+            schoolsReturned: schools.length,
+            firstSchool: schools[0]?.name ?? null,
+            demographicsRowFound: demographicsRes.rows.length > 0,
+            demographicsYear: demographicsRes.rows[0]?.year ?? null,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+
+    // #region debug-point C:district-ui-payload
+    if (districtUiDebugTargetIds.has(deso_id)) {
+      reportDistrictUiDebug("C", "[DEBUG] District UI payload ready", {
+        districtId: deso_id,
+        demographicsRowFound: demographicsRes.rows.length > 0,
+        demographicsYear: demographicsRes.rows[0]?.year ?? null,
+        projectCount: Number(projectsCountRes.rows[0]?.project_count ?? 0),
+        areaLat,
+        areaLng,
+        schoolCount: schools.length,
+      });
+    }
+    // #endregion
 
     const demo =
       demographicsRes.rows[0] ??
@@ -638,6 +1428,21 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     }
 
     const { id } = query;
+
+    const areaData = await getAreaDetails(id);
+    if (areaData?.areaType === "namedDistrict") {
+      const scores = await getScores(id, "namedDistrict");
+      return sendApiSuccess(reply, {
+        type: "district",
+        score: scores.overallScore,
+        transport: scores.transportScore,
+        schools: scores.schoolsScore,
+        safety: scores.safetyScore,
+        housing: scores.housingMarketScore,
+        green: scores.greenAreasScore,
+        growth: scores.futureGrowthScore,
+      });
+    }
 
     // Try district first
     const districtResult = await db

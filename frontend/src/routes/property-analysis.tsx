@@ -3,6 +3,7 @@ import { useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CircularScore } from "@/components/CircularScore";
 import { areas, getArea } from "@/data/areas";
+import { formatDisplayScore } from "@/lib/score-format";
 
 export const Route = createFileRoute("/property-analysis")({
   head: () => ({
@@ -124,8 +125,11 @@ export function PropertyAnalysisPage() {
                   }
                 />
                 <MetricCard label="Affordability" value={affordability} />
-                <MetricCard label="Risk score" value={`${riskScore}/100`} />
-                <MetricCard label="Housing score" value={`${area.scores.housing}/100`} />
+                <MetricCard label="Risk score" value={`${formatDisplayScore(riskScore)}/100`} />
+                <MetricCard
+                  label="Housing score"
+                  value={`${formatDisplayScore(area.scores.housing)}/100`}
+                />
               </div>
             </div>
 
@@ -232,12 +236,10 @@ function CommuteRow({ label, minutes }: { label: string; minutes: number }) {
 }
 
 function FamilyMetric({ label, score }: { label: string; score: number }) {
-  const color =
-    score >= 85 ? "var(--color-leaf)" : score >= 70 ? "var(--color-sky)" : "var(--color-primary)";
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm">{label}</span>
-      <span className="font-display text-lg">{score}/100</span>
+      <span className="font-display text-lg">{formatDisplayScore(score)}/100</span>
     </div>
   );
 }

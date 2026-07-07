@@ -1,14 +1,47 @@
+import { readFileSync } from "node:fs";
 import { ilike, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client";
+import { pool } from "../../db/connection";
 import { desoAreas, districts, municipalities } from "../../db/schema";
 import { sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
+import { getPrimaryDistrictAliasMap, normalizeDistrictAlias } from "../../lib/district-aliases";
 
 const searchSchema = z.object({
   q: z.string().min(1),
 });
+
+type SearchSource = "namedDistrict" | "alias" | "district" | "deso";
+
+type SearchRow = {
+  id: string;
+  name: string;
+  municipality: string | null;
+  type: string;
+  lat?: number | null;
+  lng?: number | null;
+  searchSource: SearchSource;
+};
+
+// #region debug-point A:search-results
+const searchDebugConfig = (() => {
+  let debugServerUrl = "http://127.0.0.1:7777/event";
+  let debugSessionId = "tureberg-schools";
+
+  try {
+    const envFile = readFileSync(
+      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/tureberg-schools.env",
+      "utf8",
+    );
+    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
+    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
+  } catch {}
+
+  return { debugServerUrl, debugSessionId };
+})();
+// #endregion
 
 export async function searchRoutes(fastify: FastifyInstance, _options: object) {
   fastify.get("/search", async (request, reply) => {
@@ -18,6 +51,33 @@ export async function searchRoutes(fastify: FastifyInstance, _options: object) {
     }
 
     const { q } = params;
+    const normalizedQuery = normalizeDistrictAlias(q);
+    const namedDistrictResult = await pool.query(
+      `SELECT
+         nd.id,
+         nd.name,
+         m.name AS municipality,
+         'district' AS type,
+         ST_Y(nd.centroid) AS lat,
+         ST_X(nd.centroid) AS lng
+       FROM named_districts nd
+       LEFT JOIN municipalities m ON m.id = nd.municipality_id
+       WHERE nd.normalized_name LIKE $1
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(nd.raw_data->'search_aliases', '[]'::jsonb)) alias(term)
+            WHERE LOWER(alias.term) LIKE $2
+          )
+       ORDER BY
+         CASE
+           WHEN nd.normalized_name = $3 THEN 0
+           WHEN nd.normalized_name LIKE $1 THEN 1
+           ELSE 2
+         END,
+         nd.name ASC
+       LIMIT 8`,
+      [`%${normalizedQuery}%`, `%${q.toLowerCase()}%`, normalizedQuery],
+    );
 
     // Search DESO areas
     const desoResult = await db
@@ -52,14 +112,134 @@ export async function searchRoutes(fastify: FastifyInstance, _options: object) {
       })
       .from(districts)
       .leftJoin(municipalities, sql`${districts.municipalityId} = ${municipalities.id}`)
-      .where(or(ilike(districts.name, `%${q}%`), ilike(municipalities.name, `%${q}%`)))
+      .where(
+        or(
+          ilike(districts.name, `%${q}%`),
+          ilike(municipalities.name, `%${q}%`),
+          ilike(districts.id, `%${q}%`),
+        ),
+      )
       .limit(5);
 
+    const districtAliasResult = await pool.query(
+      `SELECT DISTINCT ON (d.id)
+         d.id,
+         COALESCE(best.alias_name, d.name) AS name,
+         m.name AS municipality,
+         'district' AS type,
+         ST_Y(d.centroid) AS lat,
+         ST_X(d.centroid) AS lng
+       FROM district_aliases matched
+       JOIN districts d ON d.id = matched.district_id
+       LEFT JOIN municipalities m ON m.id = d.municipality_id
+       LEFT JOIN LATERAL (
+         SELECT alias_name
+         FROM district_aliases best
+         WHERE best.district_id = d.id
+           AND best.is_display = TRUE
+         ORDER BY best.priority ASC, best.alias_name ASC
+         LIMIT 1
+       ) best ON TRUE
+       WHERE COALESCE(d.type, '') <> 'municipality'
+         AND matched.normalized_alias LIKE $1
+       ORDER BY d.id, matched.priority ASC, matched.alias_name ASC
+       LIMIT 5`,
+      [`%${normalizedQuery}%`],
+    );
+
+    const districtAliasMap = await getPrimaryDistrictAliasMap(districtResult.map((row) => row.id));
+    const districtRows = districtResult.map((row) => ({
+      ...row,
+      name: districtAliasMap.get(row.id) ?? row.name,
+    }));
+    const aliasRows: SearchRow[] = districtAliasResult.rows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? row.id),
+      municipality: row.municipality ? String(row.municipality) : null,
+      type: "district",
+      lat: row.lat == null ? null : Number(row.lat),
+      lng: row.lng == null ? null : Number(row.lng),
+      searchSource: "alias",
+    }));
+    const namedDistrictRows: SearchRow[] = namedDistrictResult.rows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name ?? row.id),
+      municipality: row.municipality ? String(row.municipality) : null,
+      type: "district",
+      lat: row.lat == null ? null : Number(row.lat),
+      lng: row.lng == null ? null : Number(row.lng),
+      searchSource: "namedDistrict",
+    }));
+    const districtRowsWithSource: SearchRow[] = districtRows.map((row) => ({
+      ...row,
+      name: row.name ?? "",
+      municipality: row.municipality ?? null,
+      type: row.type,
+      lat: row.lat ?? null,
+      lng: row.lng ?? null,
+      searchSource: "district",
+    }));
+    const desoRowsWithSource: SearchRow[] = desoResult.map((row) => ({
+      ...row,
+      name: row.name ?? "",
+      municipality: row.municipality ?? null,
+      type: row.type,
+      lat: row.lat ?? null,
+      lng: row.lng ?? null,
+      searchSource: "deso",
+    }));
+
     // Combine and deduplicate results
-    const allResults = [...desoResult, ...districtResult];
-    const uniqueResults = Array.from(
-      new Map(allResults.map((item) => [item.id, item])).values(),
-    ).slice(0, 10);
+    const allResults = [
+      ...namedDistrictRows,
+      ...aliasRows,
+      ...districtRowsWithSource,
+      ...desoRowsWithSource,
+    ];
+    const seenIds = new Set<string>();
+    const seenPlaces = new Set<string>();
+    const uniqueResults: SearchRow[] = [];
+
+    for (const item of allResults) {
+      const placeKey = `${normalizeDistrictAlias(item.name)}::${normalizeDistrictAlias(item.municipality ?? "")}`;
+      if (seenIds.has(item.id) || seenPlaces.has(placeKey)) {
+        continue;
+      }
+
+      seenIds.add(item.id);
+      seenPlaces.add(placeKey);
+      uniqueResults.push(item);
+
+      if (uniqueResults.length >= 10) {
+        break;
+      }
+    }
+
+    // #region debug-point A:search-results
+    if (normalizedQuery === "kista" || normalizedQuery === "tureberg") {
+      fetch(searchDebugConfig.debugServerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: searchDebugConfig.debugSessionId,
+          runId: "post-fix",
+          hypothesisId: "A",
+          location: "src/modules/search/search.routes.ts",
+          msg: "[DEBUG] Search results after dedupe-by-place fix",
+          data: {
+            query: q,
+            normalizedQuery,
+            namedDistrictIds: namedDistrictRows.map((row) => row.id),
+            aliasIds: aliasRows.map((row) => row.id),
+            districtIds: districtRowsWithSource.map((row) => row.id),
+            desoIds: desoRowsWithSource.map((row) => row.id),
+            uniqueIds: uniqueResults.map((row) => row.id),
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
 
     return sendApiSuccess(reply, {
       results: uniqueResults.map((row) => ({
