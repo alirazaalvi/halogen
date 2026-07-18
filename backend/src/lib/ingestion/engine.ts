@@ -1,4 +1,8 @@
 import { pool } from "../../db/connection";
+import {
+  buildNamedDistrictSchoolResolutionQuery,
+  selectNamedDistrictSchoolResolutionTier,
+} from "../../modules/neighborhoods/named-district-school-resolution";
 import { normalizeDistrictAlias } from "../district-aliases";
 import {
   buildNamedDistrictId,
@@ -2884,12 +2888,7 @@ export class IngestionEngine {
         ];
   }
 
-  private distanceMeters(
-    lat1: number,
-    lng1: number,
-    lat2: number,
-    lng2: number,
-  ): number {
+  private distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
     const toRad = (v: number) => (v * Math.PI) / 180;
     const R = 6371000;
     const dLat = toRad(lat2 - lat1);
@@ -2947,7 +2946,11 @@ export class IngestionEngine {
     }
 
     const municipalityCode = String(row.source_municipality_code ?? "").trim() || "0180";
-    const fetchedSchools = await this.fetchSkolverketSchools(legacyDistrictId, municipalityCode, true);
+    const fetchedSchools = await this.fetchSkolverketSchools(
+      legacyDistrictId,
+      municipalityCode,
+      true,
+    );
 
     const deduped = new Map<string, SchoolRecord & { _distance: number }>();
     for (const school of fetchedSchools) {
@@ -2973,7 +2976,11 @@ export class IngestionEngine {
     await pool.query(`DELETE FROM schools WHERE district_id = $1`, [legacyDistrictId]);
 
     for (const school of selected) {
-      await this.upsertSchoolRecord({ ...school, district_id: legacyDistrictId, deso_id: undefined });
+      await this.upsertSchoolRecord({
+        ...school,
+        district_id: legacyDistrictId,
+        deso_id: undefined,
+      });
     }
 
     const countRes = await pool.query(
@@ -2992,6 +2999,482 @@ export class IngestionEngine {
       radiusMeters,
       municipalityCode,
       source: "skolverket-municipality-filtered-by-centroid",
+    };
+  }
+
+  async verifyNamedDistrictSchoolCoverage(options?: {
+    municipalityCode?: string | null;
+    geometryBufferMeters?: number;
+    districtRadiusMeters?: number;
+    sampleLimit?: number;
+  }) {
+    const municipalityCode = this.toNonEmptyString(options?.municipalityCode ?? null);
+    const geometryBufferMeters = Math.max(
+      0,
+      Math.min(1000, Number(options?.geometryBufferMeters ?? 150)),
+    );
+    const geometryBufferDegrees = geometryBufferMeters / 111_320;
+    const districtRadiusMeters = Math.max(
+      500,
+      Math.min(15000, Number(options?.districtRadiusMeters ?? 4000)),
+    );
+    const sampleLimit = Math.max(1, Math.min(10, Number(options?.sampleLimit ?? 5)));
+
+    const districtsRes = await pool.query(
+      `SELECT
+         nd.id,
+         nd.name,
+         nd.source_municipality_code,
+         nd.legacy_district_id,
+         (nd.geometry IS NOT NULL) AS has_geometry,
+         COALESCE(geometry_match.count, 0)::int AS geometry_match_count,
+         COALESCE(geometry_buffer.count, 0)::int AS geometry_buffer_count,
+         COALESCE(district_scoped.count, 0)::int AS district_scoped_count,
+         COALESCE(district_placeholders.count, 0)::int AS district_placeholder_count,
+         COALESCE(deso_fallback.count, 0)::int AS deso_fallback_count,
+         COALESCE(geometry_match_samples.names, '[]'::jsonb) AS geometry_match_names,
+         COALESCE(geometry_buffer_samples.names, '[]'::jsonb) AS geometry_buffer_names,
+         COALESCE(district_scoped_samples.names, '[]'::jsonb) AS district_scoped_names,
+         COALESCE(deso_fallback_samples.names, '[]'::jsonb) AS deso_fallback_names
+       FROM named_districts nd
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS count
+         FROM (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           ) 1
+           FROM schools s
+           WHERE nd.geometry IS NOT NULL
+             AND s.coordinates IS NOT NULL
+             AND ST_Covers(nd.geometry, s.coordinates)
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+             ST_Distance(s.coordinates::geography, nd.centroid::geography) ASC
+         ) ranked
+       ) geometry_match ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS count
+         FROM (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           ) 1
+           FROM schools s
+           WHERE nd.geometry IS NOT NULL
+             AND s.coordinates IS NOT NULL
+             AND NOT ST_Covers(nd.geometry, s.coordinates)
+             AND s.coordinates && ST_Expand(nd.geometry, $2)
+             AND ST_DWithin(s.coordinates, nd.geometry, $2)
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+             ST_Distance(s.coordinates::geography, nd.centroid::geography) ASC
+         ) ranked
+       ) geometry_buffer ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS count
+         FROM (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           ) 1
+           FROM schools s
+           WHERE nd.legacy_district_id IS NOT NULL
+             AND s.district_id = nd.legacy_district_id
+             AND s.coordinates IS NOT NULL
+             AND ST_DWithin(s.coordinates::geography, nd.centroid::geography, $3)
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+             ST_Distance(s.coordinates::geography, nd.centroid::geography) ASC
+         ) ranked
+       ) district_scoped ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS count
+         FROM (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           ) 1
+           FROM schools s
+           WHERE nd.legacy_district_id IS NOT NULL
+             AND s.district_id = nd.legacy_district_id
+             AND s.coordinates IS NULL
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+         ) ranked
+       ) district_placeholders ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS count
+         FROM (
+           SELECT DISTINCT ON (
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+           ) 1
+           FROM schools s
+           JOIN named_district_deso_map ndm
+             ON ndm.district_id = nd.id
+            AND ndm.deso_id = s.deso_id
+           WHERE s.coordinates IS NOT NULL
+           ORDER BY
+             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+         ) ranked
+       ) deso_fallback ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(sample.name), '[]'::jsonb) AS names
+         FROM (
+           SELECT ranked.name
+           FROM (
+             SELECT DISTINCT ON (
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+             )
+               s.name,
+               ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters
+             FROM schools s
+             WHERE nd.geometry IS NOT NULL
+               AND s.coordinates IS NOT NULL
+               AND ST_Covers(nd.geometry, s.coordinates)
+             ORDER BY
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+               distance_meters ASC
+           ) ranked
+           ORDER BY ranked.distance_meters ASC, ranked.name ASC
+           LIMIT $4
+         ) sample
+       ) geometry_match_samples ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(sample.name), '[]'::jsonb) AS names
+         FROM (
+           SELECT ranked.name
+           FROM (
+             SELECT DISTINCT ON (
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+             )
+               s.name,
+               ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters
+             FROM schools s
+             WHERE nd.geometry IS NOT NULL
+               AND s.coordinates IS NOT NULL
+               AND NOT ST_Covers(nd.geometry, s.coordinates)
+               AND s.coordinates && ST_Expand(nd.geometry, $2)
+               AND ST_DWithin(s.coordinates, nd.geometry, $2)
+             ORDER BY
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+               distance_meters ASC
+           ) ranked
+           ORDER BY ranked.distance_meters ASC, ranked.name ASC
+           LIMIT $4
+         ) sample
+       ) geometry_buffer_samples ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(sample.name), '[]'::jsonb) AS names
+         FROM (
+           SELECT ranked.name
+           FROM (
+             SELECT DISTINCT ON (
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+             )
+               s.name,
+               CASE WHEN s.coordinates IS NULL THEN 1 ELSE 0 END AS missing_geo,
+               CASE
+                 WHEN s.coordinates IS NULL THEN NULL
+                 ELSE ST_Distance(s.coordinates::geography, nd.centroid::geography)
+               END AS distance_meters
+             FROM schools s
+             WHERE nd.legacy_district_id IS NOT NULL
+               AND s.district_id = nd.legacy_district_id
+             ORDER BY
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+               missing_geo ASC,
+               distance_meters ASC NULLS LAST
+           ) ranked
+           ORDER BY ranked.missing_geo ASC, ranked.distance_meters ASC NULLS LAST, ranked.name ASC
+           LIMIT $4
+         ) sample
+       ) district_scoped_samples ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(jsonb_agg(sample.name), '[]'::jsonb) AS names
+         FROM (
+           SELECT ranked.name
+           FROM (
+             SELECT DISTINCT ON (
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
+             )
+               s.name,
+               ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters
+             FROM schools s
+             JOIN named_district_deso_map ndm
+               ON ndm.district_id = nd.id
+              AND ndm.deso_id = s.deso_id
+             WHERE s.coordinates IS NOT NULL
+             ORDER BY
+               COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
+               distance_meters ASC
+           ) ranked
+           ORDER BY ranked.distance_meters ASC, ranked.name ASC
+           LIMIT $4
+         ) sample
+       ) deso_fallback_samples ON TRUE
+       WHERE ($1::varchar IS NULL OR nd.source_municipality_code = $1)
+       ORDER BY nd.source_municipality_code ASC, nd.name ASC, nd.id ASC`,
+      [municipalityCode, geometryBufferDegrees, districtRadiusMeters, sampleLimit],
+    );
+
+    const districts = districtsRes.rows.map((row) => {
+      const counts = {
+        geometryMatchCount: Number(row.geometry_match_count ?? 0),
+        geometryBufferCount: Number(row.geometry_buffer_count ?? 0),
+        districtScopedCount: Number(row.district_scoped_count ?? 0),
+        districtPlaceholderCount: Number(row.district_placeholder_count ?? 0),
+        desoFallbackCount: Number(row.deso_fallback_count ?? 0),
+      };
+      const selectedTier = selectNamedDistrictSchoolResolutionTier(counts);
+      const sampleSchoolNames =
+        selectedTier === "geometry_match"
+          ? this.toArray(row.geometry_match_names)
+          : selectedTier === "geometry_buffer"
+            ? this.toArray(row.geometry_buffer_names)
+            : selectedTier === "district_scoped_ingestion"
+              ? this.toArray(row.district_scoped_names)
+              : selectedTier === "deso_fallback"
+                ? this.toArray(row.deso_fallback_names)
+                : [];
+
+      return {
+        districtId: String(row.id),
+        districtName: String(row.name ?? row.id),
+        municipalityCode: String(row.source_municipality_code ?? ""),
+        geometryPresent: Boolean(row.has_geometry),
+        legacyDistrictId: row.legacy_district_id ? String(row.legacy_district_id) : null,
+        geometryMatchCount: counts.geometryMatchCount,
+        geometryBufferCount: counts.geometryBufferCount,
+        districtScopedSchoolCount: counts.districtScopedCount,
+        districtPlaceholderCount: counts.districtPlaceholderCount,
+        desoFallbackSchoolCount: counts.desoFallbackCount,
+        selectedResolutionTier: selectedTier,
+        sampleSchoolNames: sampleSchoolNames.map((name) => String(name)).filter(Boolean),
+      };
+    });
+
+    return {
+      status: "ok",
+      municipalityCode,
+      geometryBufferMeters,
+      districtRadiusMeters,
+      totalDistricts: districts.length,
+      zeroSchoolDistricts: districts.filter(
+        (district) => district.selectedResolutionTier === "none",
+      ).length,
+      fallbackDistricts: districts.filter((district) =>
+        ["district_scoped_ingestion", "deso_fallback", "none"].includes(
+          district.selectedResolutionTier,
+        ),
+      ).length,
+      districts,
+    };
+  }
+
+  private async backfillNamedDistrictDesoMap(namedDistrictId: string): Promise<{
+    inserted: number;
+    total: number;
+  }> {
+    const insertRes = await pool.query(
+      `INSERT INTO named_district_deso_map (district_id, deso_id)
+       SELECT
+         nd.id AS district_id,
+         da.id AS deso_id
+       FROM named_districts nd
+       JOIN deso_areas da
+         ON nd.geometry IS NOT NULL
+        AND da.geometry IS NOT NULL
+        AND ST_Intersects(nd.geometry, da.geometry)
+       WHERE nd.id = $1
+       ON CONFLICT (district_id, deso_id) DO NOTHING`,
+      [namedDistrictId],
+    );
+
+    const totalRes = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM named_district_deso_map
+       WHERE district_id = $1`,
+      [namedDistrictId],
+    );
+
+    return {
+      inserted: insertRes.rowCount ?? 0,
+      total: Number(totalRes.rows[0]?.count ?? 0),
+    };
+  }
+
+  async fixRemainingNamedDistrictSchools(options?: {
+    municipalityCodes?: string[];
+    minSchoolRows?: number;
+    geometryBufferMeters?: number;
+    districtRadiusMeters?: number;
+    ingestRadiusMeters?: number;
+    ingestLimit?: number;
+    queryLimit?: number;
+  }) {
+    const municipalityCodes =
+      (options?.municipalityCodes ?? []).filter(Boolean).length > 0
+        ? (options?.municipalityCodes ?? []).filter(Boolean)
+        : NAMED_DISTRICT_PILOT_MUNICIPALITY_CODES;
+    const minSchoolRows = Math.max(1, Math.min(20, Number(options?.minSchoolRows ?? 1)));
+    const geometryBufferMeters = Math.max(
+      0,
+      Math.min(1000, Number(options?.geometryBufferMeters ?? 150)),
+    );
+    const districtRadiusMeters = Math.max(
+      500,
+      Math.min(15000, Number(options?.districtRadiusMeters ?? 4000)),
+    );
+    const ingestRadiusMeters = Math.max(
+      500,
+      Math.min(15000, Number(options?.ingestRadiusMeters ?? 4000)),
+    );
+    const ingestLimit = Math.max(1, Math.min(200, Number(options?.ingestLimit ?? 80)));
+    const queryLimit = Math.max(1, Math.min(25, Number(options?.queryLimit ?? 8)));
+
+    const results: Array<{
+      districtId: string;
+      districtName: string;
+      municipalityCode: string;
+      geometryPresent: boolean;
+      legacyDistrictId: string | null;
+      beforeCount: number;
+      afterCount: number;
+      action:
+        | "none"
+        | "district_scoped_ingestion"
+        | "backfill_named_district_deso_map"
+        | "skipped_already_ok";
+      notes?: string;
+    }> = [];
+    const updatedDistricts: Array<{
+      districtId: string;
+      districtName: string;
+      municipalityCode: string;
+      geometryPresent: boolean;
+      legacyDistrictId: string | null;
+      beforeCount: number;
+      afterCount: number;
+      action: "none" | "district_scoped_ingestion" | "backfill_named_district_deso_map";
+      notes?: string;
+    }> = [];
+    const stillMissingDistricts: Array<{
+      districtId: string;
+      districtName: string;
+      municipalityCode: string;
+      geometryPresent: boolean;
+      legacyDistrictId: string | null;
+      beforeCount: number;
+      afterCount: number;
+      action: "none" | "district_scoped_ingestion" | "backfill_named_district_deso_map";
+      notes?: string;
+    }> = [];
+    let skipped = 0;
+
+    for (const municipalityCode of municipalityCodes) {
+      const districtsRes = await pool.query(
+        `SELECT
+           id,
+           name,
+           source_municipality_code,
+           legacy_district_id,
+           (geometry IS NOT NULL) AS geometry_present
+         FROM named_districts
+         WHERE source_municipality_code = $1
+         ORDER BY name ASC, id ASC`,
+        [municipalityCode],
+      );
+
+      for (const row of districtsRes.rows as Array<{
+        id: unknown;
+        name: unknown;
+        source_municipality_code: unknown;
+        legacy_district_id: unknown;
+        geometry_present: unknown;
+      }>) {
+        const districtId = String(row.id);
+        const districtName = String(row.name ?? districtId);
+        const legacyDistrictId = row.legacy_district_id ? String(row.legacy_district_id) : null;
+        const geometryPresent = Boolean(row.geometry_present);
+
+        const query = buildNamedDistrictSchoolResolutionQuery({
+          districtId,
+          legacyDistrictId,
+          geometryBufferMeters,
+          districtRadiusMeters,
+          limit: queryLimit,
+        });
+        const beforeRes = await pool.query(query.text, query.values);
+        const beforeCount = beforeRes.rowCount ?? beforeRes.rows.length;
+
+        if (beforeCount >= minSchoolRows) {
+          skipped += 1;
+          continue;
+        }
+
+        let action:
+          | "none"
+          | "district_scoped_ingestion"
+          | "backfill_named_district_deso_map" = "none";
+        let notes: string | undefined;
+
+        if (legacyDistrictId) {
+          action = "district_scoped_ingestion";
+          try {
+            await this.ingestSchoolsForNamedDistrict(districtId, {
+              radiusMeters: ingestRadiusMeters,
+              limit: ingestLimit,
+            });
+          } catch (err) {
+            action = "none";
+            notes = `district_scoped_ingestion_failed: ${String((err as Error)?.message ?? err)}`;
+          }
+        } else if (geometryPresent) {
+          action = "backfill_named_district_deso_map";
+          const backfill = await this.backfillNamedDistrictDesoMap(districtId);
+          notes = `deso_map_inserted=${backfill.inserted} total=${backfill.total}`;
+        }
+
+        const afterRes = await pool.query(query.text, query.values);
+        const afterCount = afterRes.rowCount ?? afterRes.rows.length;
+
+        const updated = {
+          districtId,
+          districtName,
+          municipalityCode,
+          geometryPresent,
+          legacyDistrictId,
+          beforeCount,
+          afterCount,
+          action,
+          notes,
+        } as const;
+        results.push(updated);
+        updatedDistricts.push(updated);
+        if (afterCount < minSchoolRows) {
+          stillMissingDistricts.push(updated);
+        }
+      }
+    }
+
+    const touched = updatedDistricts.length;
+    const improved = updatedDistricts.filter((r) => r.afterCount > r.beforeCount).length;
+    const stillMissing = stillMissingDistricts.length;
+
+    return {
+      status: "ok",
+      scope: "fix-remaining-named-district-schools",
+      municipalityCodes,
+      minSchoolRows,
+      geometryBufferMeters,
+      districtRadiusMeters,
+      ingestRadiusMeters,
+      ingestLimit,
+      queryLimit,
+      totalDistricts: results.length + skipped,
+      skipped,
+      touched,
+      improved,
+      stillMissing,
+      updatedDistricts,
+      stillMissingDistricts,
     };
   }
 

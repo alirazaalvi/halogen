@@ -14,6 +14,7 @@ import {
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
+import { buildNamedDistrictSchoolResolutionQuery } from "./named-district-school-resolution";
 
 // #region debug-point A:akalla-neighborhood-detail
 const akallaDebugConfig = (() => {
@@ -499,6 +500,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     }
 
     const { area, areaType } = areaData;
+
     const scores = await getScores(deso_id, areaType);
 
     const areaLng = Number(area.lng ?? 0);
@@ -519,12 +521,18 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
 
     // Radius for school proximity search: larger for districts (city-wide areas), smaller for deso
     const isDistrict = areaType !== "deso";
-    const useLegacyDistrictSchoolFallback =
-      areaType === "namedDistrict" &&
-      area.sourceType === "seeded_centroid" &&
-      area.legacyDistrictId != null;
     const schoolRadiusMeters = isDistrict ? 5000 : 2000;
     const schoolRadiusDegrees = schoolRadiusMeters / 111_320;
+    const namedDistrictSchoolQuery =
+      areaType === "namedDistrict"
+        ? buildNamedDistrictSchoolResolutionQuery({
+            districtId: deso_id,
+            legacyDistrictId: area.legacyDistrictId,
+            geometryBufferMeters: 150,
+            districtRadiusMeters: Math.min(schoolRadiusMeters, 4000),
+            limit: 8,
+          })
+        : null;
 
     // #region debug-point A:rissne-school-entry
     if (deso_id === "ND-0183-rissne") {
@@ -536,7 +544,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
         areaLng,
         sourceType: area.sourceType,
         legacyDistrictId: area.legacyDistrictId,
-        useLegacyDistrictSchoolFallback,
+        namedDistrictQueryEnabled: Boolean(namedDistrictSchoolQuery),
         schoolRadiusMeters,
       });
     }
@@ -564,170 +572,9 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     // #endregion
 
     const schoolsRes = await pool.query(
-      useLegacyDistrictSchoolFallback
-        ? `WITH district_geo_schools AS (
-             SELECT DISTINCT ON (school_identity)
-               s.name,
-               COALESCE(s.address, '') AS address,
-               COALESCE(s.student_count, 0) AS student_count,
-               COALESCE(s.performance, 0) AS performance,
-               ST_Y(s.coordinates) AS lat,
-               ST_X(s.coordinates) AS lng,
-               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
-               ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters,
-               school_identity
-             FROM (
-               SELECT
-                 s.*,
-                 COALESCE(
-                   NULLIF(s.school_unit_code, ''),
-                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
-                 ) AS school_identity
-               FROM schools s
-             ) s
-             JOIN named_districts nd ON nd.id = $1
-             WHERE s.district_id = $2
-               AND s.coordinates IS NOT NULL
-               AND ST_DWithin(s.coordinates::geography, nd.centroid::geography, $3)
-             ORDER BY
-               school_identity,
-               distance_meters ASC,
-               performance DESC,
-               student_count DESC
-           ),
-           district_placeholders AS (
-             SELECT DISTINCT ON (school_identity)
-               s.name,
-               COALESCE(s.address, '') AS address,
-               COALESCE(s.student_count, 0) AS student_count,
-               COALESCE(s.performance, 0) AS performance,
-               NULL::double precision AS lat,
-               NULL::double precision AS lng,
-               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
-               NULL::double precision AS distance_meters,
-               school_identity
-             FROM (
-               SELECT
-                 s.*,
-                 COALESCE(
-                   NULLIF(s.school_unit_code, ''),
-                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
-                 ) AS school_identity
-               FROM schools s
-             ) s
-             WHERE s.district_id = $2
-               AND s.coordinates IS NULL
-               AND NOT EXISTS (SELECT 1 FROM district_geo_schools)
-             ORDER BY
-               school_identity,
-               performance DESC,
-               student_count DESC
-           ),
-           fallback_deso_schools AS (
-             SELECT DISTINCT ON (school_identity)
-               s.name,
-               COALESCE(s.address, '') AS address,
-               COALESCE(s.student_count, 0) AS student_count,
-               COALESCE(s.performance, 0) AS performance,
-               ST_Y(s.coordinates) AS lat,
-               ST_X(s.coordinates) AS lng,
-               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
-               ST_Distance(
-                 s.coordinates::geography,
-                 COALESCE(nd.geometry, nd.centroid)::geography
-               ) AS distance_meters,
-               school_identity
-             FROM (
-               SELECT
-                 s.*,
-                 COALESCE(
-                   NULLIF(s.school_unit_code, ''),
-                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
-                 ) AS school_identity
-               FROM schools s
-             ) s
-             JOIN named_districts nd ON nd.id = $1
-             JOIN named_district_deso_map ndm
-               ON ndm.district_id = nd.id
-              AND ndm.deso_id = s.deso_id
-             WHERE s.coordinates IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM district_geo_schools)
-               AND NOT EXISTS (SELECT 1 FROM district_placeholders)
-             ORDER BY
-               school_identity,
-               distance_meters ASC,
-               performance DESC,
-               student_count DESC
-           ),
-           ranked_schools AS (
-             SELECT * FROM district_geo_schools
-             UNION ALL
-             SELECT * FROM district_placeholders
-             UNION ALL
-             SELECT * FROM fallback_deso_schools
-           )
-           SELECT
-             name,
-             address,
-             student_count,
-             performance,
-             lat,
-             lng,
-             source_links,
-             distance_meters
-           FROM ranked_schools
-           ORDER BY
-             (distance_meters IS NULL) ASC,
-             distance_meters ASC NULLS LAST,
-             performance DESC
-           LIMIT 8`
-        : areaType === "namedDistrict"
-        ? `WITH ranked_schools AS (
-             SELECT DISTINCT ON (school_identity)
-               s.name,
-               COALESCE(s.address, '') AS address,
-               COALESCE(s.student_count, 0) AS student_count,
-               COALESCE(s.performance, 0) AS performance,
-               ST_Y(s.coordinates) AS lat,
-               ST_X(s.coordinates) AS lng,
-               COALESCE(s.source_links, '[]'::jsonb) AS source_links,
-               ST_Distance(
-                 s.coordinates::geography,
-                 COALESCE(nd.geometry, nd.centroid)::geography
-               ) AS distance_meters,
-               school_identity
-             FROM (
-               SELECT
-                 s.*,
-                 COALESCE(
-                   NULLIF(s.school_unit_code, ''),
-                   LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
-                 ) AS school_identity
-               FROM schools s
-             ) s
-             JOIN named_districts nd ON nd.id = $1
-             JOIN named_district_deso_map ndm
-               ON ndm.district_id = nd.id
-              AND ndm.deso_id = s.deso_id
-             WHERE s.coordinates IS NOT NULL
-             ORDER BY
-               school_identity,
-               distance_meters ASC,
-               performance DESC,
-               student_count DESC
-           )
-           SELECT
-             name,
-             address,
-             student_count,
-             performance,
-             lat,
-             lng,
-             source_links,
-             distance_meters
-           FROM ranked_schools
-           ORDER BY distance_meters ASC, performance DESC
-           LIMIT 8`
+      areaType === "namedDistrict"
+        ? (namedDistrictSchoolQuery?.text ??
+            "SELECT NULL::text AS name, '' AS address, 0 AS student_count, 0 AS performance, NULL::double precision AS lat, NULL::double precision AS lng, '[]'::jsonb AS source_links, NULL::double precision AS distance_meters WHERE FALSE")
         : isDistrict
           ? `WITH ranked_schools AS (
              SELECT DISTINCT ON (school_identity)
@@ -825,10 +672,8 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
            FROM ranked_schools
            ORDER BY distance_meters ASC, performance DESC
            LIMIT 8`,
-      useLegacyDistrictSchoolFallback
-        ? [deso_id, area.legacyDistrictId, Math.min(schoolRadiusMeters, 4000)]
-        : areaType === "namedDistrict"
-          ? [deso_id]
+      areaType === "namedDistrict"
+        ? (namedDistrictSchoolQuery?.values ?? [])
         : isDistrict
           ? [deso_id, schoolRadiusMeters, schoolRadiusDegrees]
           : [areaLng, areaLat, schoolRadiusMeters],

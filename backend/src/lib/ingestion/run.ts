@@ -1,5 +1,5 @@
-import { IngestionEngine } from "./engine";
 import { pool } from "../../db/connection";
+import { IngestionEngine } from "./engine";
 
 async function main() {
   const engine = new IngestionEngine();
@@ -97,6 +97,42 @@ async function main() {
       districts: perDistrict,
     };
     console.log("[ingest] phase seeded-named-districts-schools done");
+  } else if (command === "verify-named-district-schools") {
+    const municipality = arg1?.trim() ? String(arg1).trim() : null;
+    const geometryBufferArg = Number.parseInt(arg2 ?? "150", 10);
+    const districtRadiusArg = Number.parseInt(arg3 ?? "4000", 10);
+    const geometryBufferMeters = Number.isFinite(geometryBufferArg) ? geometryBufferArg : 150;
+    const districtRadiusMeters = Number.isFinite(districtRadiusArg) ? districtRadiusArg : 4000;
+    console.log(
+      `[ingest] phase verify-named-district-schools started${municipality ? `: muni=${municipality}` : ""} geometryBuffer=${geometryBufferMeters} districtRadius=${districtRadiusMeters}`,
+    );
+    result = await engine.verifyNamedDistrictSchoolCoverage({
+      municipalityCode: municipality,
+      geometryBufferMeters,
+      districtRadiusMeters,
+    });
+    console.log("[ingest] phase verify-named-district-schools done");
+  } else if (command === "fix-remaining-named-district-schools") {
+    const minSchoolsArg = Number.parseInt(arg1 ?? "1", 10);
+    const minSchoolRows = Number.isFinite(minSchoolsArg) ? minSchoolsArg : 1;
+    const ingestRadiusArg = Number.parseInt(arg2 ?? "4000", 10);
+    const ingestRadiusMeters = Number.isFinite(ingestRadiusArg) ? ingestRadiusArg : 4000;
+    const municipalitiesRaw = arg3?.trim() ? String(arg3).trim() : "";
+    const municipalityCodes = municipalitiesRaw
+      ? municipalitiesRaw
+          .split(",")
+          .map((code) => code.trim())
+          .filter(Boolean)
+      : undefined;
+    console.log(
+      `[ingest] phase fix-remaining-named-district-schools started: minSchools=${minSchoolRows} ingestRadius=${ingestRadiusMeters}${municipalityCodes ? ` muni=${municipalityCodes.join(",")}` : ""}`,
+    );
+    result = await engine.fixRemainingNamedDistrictSchools({
+      municipalityCodes,
+      minSchoolRows,
+      ingestRadiusMeters,
+    });
+    console.log("[ingest] phase fix-remaining-named-district-schools done");
   } else if (command === "all-districts-full") {
     console.log(`[ingest] phase all-districts started: year=${year}`);
     result = await engine.ingestAllDistricts({ year });
