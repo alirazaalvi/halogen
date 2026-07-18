@@ -48,7 +48,7 @@ type BackendFeaturedResponse = {
 
 function toFiniteNumber(input: unknown): number | null {
   const n = Number(input);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? Math.round(n) : null;
 }
 
 function toSlug(value: string): string {

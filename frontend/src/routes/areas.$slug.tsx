@@ -136,7 +136,7 @@ type GrowthPredictionState = {
 
 function toFiniteNumber(input: unknown): number | undefined {
   const n = Number(input);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(n) ? Math.round(n) : undefined;
 }
 
 function normalizeSourceLinks(input: unknown): SourceLink[] {
@@ -643,7 +643,9 @@ function AreaPage() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-2xl">{scoreLabels[k].icon}</span>
-                <span className="font-display text-2xl">{formatDisplayScore(liveArea.scores[k])}</span>
+                <span className="font-display text-2xl">
+                  {formatDisplayScore(liveArea.scores[k])}
+                </span>
               </div>
               <div className="mt-3 text-sm font-medium">{scoreLabels[k].label}</div>
               <div className="mt-3">
@@ -739,9 +741,9 @@ function AreaPage() {
                 <div key={row.label}>
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span>{row.label}</span>
-                    <span className="font-medium">{row.v} min</span>
+                    <span className="font-medium">{Math.round(row.v)} min</span>
                   </div>
-                  <ScoreBar value={Math.max(5, 100 - row.v * 1.5)} tone="sky" />
+                  <ScoreBar value={Math.round(Math.max(5, 100 - row.v * 1.5))} tone="sky" />
                 </div>
               ))}
             </div>
@@ -773,14 +775,14 @@ function AreaPage() {
         <div className="mt-6 grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
           {[
             { label: "Population", v: liveArea.demographics.population.toLocaleString() },
-            { label: "Growth /yr", v: `${liveArea.demographics.growth}%` },
+            { label: "Growth /yr", v: `${Math.round(liveArea.demographics.growth * 10) / 10}%` },
             {
               label: "Median income",
-              v: `${(liveArea.demographics.medianIncome / 1000).toFixed(0)}k SEK`,
+              v: `${Math.round(liveArea.demographics.medianIncome / 1000)}k SEK`,
             },
-            { label: "Avg age", v: `${liveArea.demographics.avgAge}` },
-            { label: "Families w/ kids", v: `${liveArea.demographics.familiesPct}%` },
-            { label: "Ownership", v: `${liveArea.demographics.ownershipPct}%` },
+            { label: "Avg age", v: `${Math.round(liveArea.demographics.avgAge)}` },
+            { label: "Families w/ kids", v: `${Math.round(liveArea.demographics.familiesPct)}%` },
+            { label: "Ownership", v: `${Math.round(liveArea.demographics.ownershipPct)}%` },
           ].map((d) => (
             <div key={d.label} className="rounded-2xl border border-border bg-card p-5">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">

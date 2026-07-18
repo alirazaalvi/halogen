@@ -111,8 +111,14 @@ export function PropertyAnalysisPage() {
               <h2 className="font-display text-2xl mb-6">Investment Metrics</h2>
 
               <div className="grid gap-4 grid-cols-2">
-                <MetricCard label="Price per sqm" value={`${pricePerSqm.toLocaleString()} SEK`} />
-                <MetricCard label="Avg area price" value={`${avgPrice.toLocaleString()} SEK`} />
+                <MetricCard
+                  label="Price per sqm"
+                  value={`${Math.round(pricePerSqm).toLocaleString()} SEK`}
+                />
+                <MetricCard
+                  label="Avg area price"
+                  value={`${Math.round(avgPrice).toLocaleString()} SEK`}
+                />
                 <MetricCard
                   label="Market position"
                   value={marketPosition}

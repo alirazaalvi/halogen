@@ -119,7 +119,7 @@ export function AreaMap({
             color: getPriceColor(pp.pricePerSqm),
             fillOpacity: 0.2,
           })
-            .bindPopup(`Price: ${pp.pricePerSqm.toLocaleString()} SEK/sqm`)
+            .bindPopup(`Price: ${Math.round(pp.pricePerSqm).toLocaleString()} SEK/sqm`)
             .addTo(map);
         }
       }

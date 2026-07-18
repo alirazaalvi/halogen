@@ -7,3 +7,7 @@ export function formatDisplayScore(value: unknown): string {
   const normalized = normalizeDisplayScore(value);
   return normalized == null ? "-" : String(normalized);
 }
+
+export function roundToInt(value: number): number {
+  return Math.round(value);
+}
