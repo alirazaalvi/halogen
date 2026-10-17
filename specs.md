@@ -126,17 +126,10 @@ src/
     └── scoring/
         └── engine.js
 
-5. PYTHON AI SERVICE (VENV)
-python/
-├── api.py               # FastAPI endpoints
-├── scoring_engine.py      # Scoring algorithms
-├── collectors/          # Reference only (not used)
-├── requirements.txt
-└── start.sh
+5. AI TEXT
+Generated in-process by the API from stored scores (backend/src/lib/ai). The former Python
+service was removed so the API can run on Cloudflare Workers; see docs/deploy-cloudflare.md.
 
 6. STARTUP COMMANDS
 Backend:
-cd backend && npm install && npm run ingest && npm run dev
-
-Python AI Service:
-cd python && source venv/bin/activate && uvicorn api:app --reload --port 8000
+cd backend && bun install && bun run ingest && bun run dev

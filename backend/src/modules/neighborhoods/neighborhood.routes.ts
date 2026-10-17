@@ -1,5 +1,4 @@
 import { desc, eq, sql } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client";
 import { pool } from "../../db/connection";
@@ -15,6 +14,7 @@ import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { latestDemographicsSql } from "../../lib/api/demographics-sql";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
+import type { RouteApp } from "../../lib/http/route-app";
 import { buildNamedDistrictSchoolResolutionQuery } from "./named-district-school-resolution";
 
 function toSlug(value: string) {
@@ -246,7 +246,7 @@ function scorePayload(type: "district" | "deso", scores: Record<string, unknown>
   };
 }
 
-export async function neighborhoodRoutes(fastify: FastifyInstance, _options: object) {
+export async function neighborhoodRoutes(fastify: RouteApp, _options: object) {
   fastify.get("/featured-neighborhoods", async (request, reply) => {
     const query = parseOrReply(
       z

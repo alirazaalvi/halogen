@@ -26,8 +26,7 @@ bun run dev
 - REST API endpoints
 - Swagger docs: http://localhost:3001/docs
 
-**Python AI Service (venv):**
-- Chat/summary text from supplied scores only; no scoring logic and no verdicts
+**AI text:** generated in-process from stored scores (`src/lib/ai`); no verdicts.
 
 ## Ingestion Engine
 
@@ -71,3 +70,5 @@ bun run src/lib/ingestion/run.ts scb-describe <PxWeb table URL>  # list variable
 SCB indicators (income, education, foreign born, families) are configured in
 `src/lib/ingestion/pxweb-indicator.ts`. A spec is only used if every code in it exists in
 the live table metadata; none are configured until their codes have been confirmed.
+
+Cloudflare deployment and database migration: see `docs/deploy-cloudflare.md`.

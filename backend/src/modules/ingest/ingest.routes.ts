@@ -1,7 +1,7 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
+import type { RouteApp, RouteReply, RouteReq } from "../../lib/http/route-app";
 import { IngestionEngine } from "../../lib/ingestion/engine";
 
 const engine = new IngestionEngine();
@@ -34,8 +34,8 @@ const stockholmAllBodySchema = z
   })
   .default({});
 
-export async function ingestRoutes(fastify: FastifyInstance, _options: object) {
-  const runFullIngestion = async (request: FastifyRequest, reply: FastifyReply) => {
+export async function ingestRoutes(fastify: RouteApp, _options: object) {
+  const runFullIngestion = async (request: RouteReq, reply: RouteReply) => {
     const body = parseOrReply(fullBodySchema, request.body ?? {}, reply);
     if (!body) {
       return;

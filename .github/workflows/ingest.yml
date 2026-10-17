@@ -1,0 +1,30 @@
+name: Ingest data
+
+# Manual. Ingestion is long-running, so it runs here (or on any host) against the production
+# database instead of inside a Worker. Needs the secret DATABASE_URL; TRAFIKLAB_API_KEY is optional.
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "run.ts command (full-backfill, rescore, check-data, ...)"
+        default: "full-backfill"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TRAFIKLAB_API_KEY: ${{ secrets.TRAFIKLAB_API_KEY }}
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Apply migrations
+        run: bash scripts/db-migrate.sh
+      - name: Run
+        run: bun run src/lib/ingestion/run.ts ${{ inputs.command }}

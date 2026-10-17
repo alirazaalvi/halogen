@@ -1,5 +1,4 @@
 import { ilike, or, sql } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client";
 import { pool } from "../../db/connection";
@@ -7,6 +6,7 @@ import { desoAreas, districts, municipalities } from "../../db/schema";
 import { sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap, normalizeDistrictAlias } from "../../lib/district-aliases";
+import type { RouteApp } from "../../lib/http/route-app";
 
 const searchSchema = z.object({
   q: z.string().min(1),
@@ -24,7 +24,7 @@ type SearchRow = {
   searchSource: SearchSource;
 };
 
-export async function searchRoutes(fastify: FastifyInstance, _options: object) {
+export async function searchRoutes(fastify: RouteApp, _options: object) {
   fastify.get("/search", async (request, reply) => {
     const params = parseOrReply(searchSchema, request.query, reply);
     if (!params) {

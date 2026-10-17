@@ -1,11 +1,18 @@
-import type { FastifyInstance } from "fastify";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { db } from "../../db/client";
+import { desoAreas, neighborhoodScores } from "../../db/schema";
+import { chatReply, summary } from "../../lib/ai/describe";
+import { publicScores } from "../../lib/api/area-scores";
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
+import type { RouteApp } from "../../lib/http/route-app";
 
-const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
-
-export async function aiRoutes(fastify: FastifyInstance, _options: object) {
+/**
+ * Text is generated in-process from stored scores (no separate AI service), so the API
+ * has no external runtime dependency and runs on Cloudflare Workers.
+ */
+export async function aiRoutes(fastify: RouteApp, _options: object) {
   fastify.post("/chat", async (request, reply) => {
     const parsed = parseOrReply(
       z.object({
@@ -26,32 +33,14 @@ export async function aiRoutes(fastify: FastifyInstance, _options: object) {
     }
 
     const { message, context } = parsed;
-
-    if (!message) {
-      return sendApiError(reply, 400, "BAD_REQUEST", "Message is required");
-    }
-
-    try {
-      const response = await fetch(`${PYTHON_API_URL}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          context: context?.name
-            ? { name: context.name, region: context.region ?? "", scores: context.scores ?? {} }
-            : undefined,
-        }),
-      });
-      if (!response.ok) {
-        return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service returned an error");
-      }
-
-      const data = await response.json();
-      return sendApiSuccess(reply, data);
-    } catch (_error) {
-      // Never answer with canned text that looks like analysis (DR-52).
-      return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service is unavailable");
-    }
+    return sendApiSuccess(reply, {
+      reply: chatReply({
+        message,
+        context: context?.name
+          ? { name: context.name, region: context.region, scores: context.scores }
+          : undefined,
+      }),
+    });
   });
 
   fastify.post("/summary", async (request, reply) => {
@@ -61,25 +50,27 @@ export async function aiRoutes(fastify: FastifyInstance, _options: object) {
     }
 
     const { deso_id } = parsed;
-
-    if (!deso_id) {
-      return sendApiError(reply, 400, "BAD_REQUEST", "deso_id is required");
+    const [area] = await db
+      .select({ name: desoAreas.name })
+      .from(desoAreas)
+      .where(eq(desoAreas.id, deso_id))
+      .limit(1);
+    if (!area) {
+      return sendApiError(reply, 404, "NOT_FOUND", "Area not found");
     }
 
-    try {
-      const response = await fetch(`${PYTHON_API_URL}/summary`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deso_id }),
-      });
-      if (!response.ok) {
-        return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service returned an error");
-      }
+    const [scoreRow] = await db
+      .select()
+      .from(neighborhoodScores)
+      .where(eq(neighborhoodScores.desoId, deso_id))
+      .limit(1);
 
-      const data = await response.json();
-      return sendApiSuccess(reply, data);
-    } catch (_error) {
-      return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service is unavailable");
-    }
+    return sendApiSuccess(
+      reply,
+      summary({
+        name: area.name ?? deso_id,
+        scores: publicScores((scoreRow ?? {}) as Record<string, unknown>),
+      }),
+    );
   });
 }

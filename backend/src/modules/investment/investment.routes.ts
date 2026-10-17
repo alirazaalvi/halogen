@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client";
 import { pool } from "../../db/connection";
@@ -7,8 +6,9 @@ import { neighborhoodScores } from "../../db/schema";
 import { toNumeric } from "../../lib/api/area-scores";
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
+import type { RouteApp } from "../../lib/http/route-app";
 
-export async function investmentRoutes(fastify: FastifyInstance, _options: object) {
+export async function investmentRoutes(fastify: RouteApp, _options: object) {
   fastify.post("/analyze", async (request, reply) => {
     const parsed = parseOrReply(
       z.object({

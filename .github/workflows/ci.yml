@@ -73,14 +73,21 @@ jobs:
         run: node --test src/lib/*.test.ts
       - run: npx vite build
 
-  python:
+  cloudflare-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
-      - run: pip install -r python/requirements.txt
-      - name: Import check
-        working-directory: python
-        run: python -c "import api"
+          node-version: 22
+      - name: Bundle the API worker
+        working-directory: backend
+        run: |
+          bun install
+          bun run cf:build
+      - name: Bundle the web app
+        working-directory: frontend
+        run: |
+          npm ci
+          VITE_BACKEND_API_URL=https://example.invalid npm run cf:build

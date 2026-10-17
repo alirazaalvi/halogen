@@ -1,5 +1,4 @@
 import { eq, inArray, sql } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../../db/client";
 import { pool } from "../../db/connection";
@@ -13,6 +12,7 @@ import {
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
+import type { RouteApp } from "../../lib/http/route-app";
 
 function toNumeric(value: unknown): number | null {
   if (value === null || value === undefined) {
@@ -23,7 +23,7 @@ function toNumeric(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export async function compareRoutes(fastify: FastifyInstance, _options: object) {
+export async function compareRoutes(fastify: RouteApp, _options: object) {
   fastify.get("/compare", async (request, reply) => {
     const parsed = parseOrReply(
       z.object({ a: z.string().min(1), b: z.string().min(1) }),

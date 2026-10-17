@@ -1,4 +1,4 @@
-import type { FastifyReply } from "fastify";
+import type { RouteReply } from "../http/route-app";
 
 export type ApiErrorCode =
   | "BAD_REQUEST"
@@ -22,7 +22,7 @@ export type ApiSuccessBody<T> = {
 };
 
 export function sendApiError(
-  reply: FastifyReply,
+  reply: RouteReply,
   statusCode: number,
   code: ApiErrorCode,
   message: string,
@@ -40,7 +40,7 @@ export function sendApiError(
   return reply.code(statusCode).send(body);
 }
 
-export function sendApiSuccess<T>(reply: FastifyReply, data: T, statusCode = 200) {
+export function sendApiSuccess<T>(reply: RouteReply, data: T, statusCode = 200) {
   const body: ApiSuccessBody<T> = {
     success: true,
     data,

@@ -1,0 +1,13 @@
+{
+  // Static single-page app on Cloudflare Workers (static assets). Deploy with `npm run cf:deploy`.
+  // Build first with VITE_BACKEND_API_URL set to the API worker URL, e.g.
+  //   VITE_BACKEND_API_URL=https://halogen-api.<account>.workers.dev npm run build
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "halogen-web",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    // Client-side routing: unknown paths serve index.html.
+    "not_found_handling": "single-page-application"
+  }
+}

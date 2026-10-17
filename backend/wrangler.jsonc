@@ -1,0 +1,26 @@
+{
+  // Read API on Cloudflare Workers. Deploy with `bun run cf:deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "halogen-api",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Postgres (with PostGIS) hosted elsewhere, e.g. Neon or Supabase, reached through Hyperdrive.
+  // Create it with:  npx wrangler hyperdrive create halogen-db --connection-string="postgres://..."
+  // then paste the returned id below.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      // Used by `wrangler dev` only; point it at a local Postgres.
+      "localConnectionString": "postgresql://postgres:postgres@localhost:5432/neighborhood_intelligence"
+    }
+  ],
+
+  "vars": {
+    // Comma-separated origins allowed by CORS. "*" allows any origin.
+    "ALLOWED_ORIGIN": "*"
+  }
+}
