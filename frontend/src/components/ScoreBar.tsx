@@ -1,5 +1,5 @@
 interface Props {
-  value: number;
+  value: number | null;
   tone?: "primary" | "leaf" | "sky";
 }
 
@@ -12,10 +12,12 @@ export function ScoreBar({ value, tone = "primary" }: Props) {
         : "var(--color-primary)";
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-      <div
-        className="h-full rounded-full transition-[width] duration-700"
-        style={{ width: `${value}%`, background: color }}
-      />
+      {value !== null && (
+        <div
+          className="h-full rounded-full transition-[width] duration-700"
+          style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: color }}
+        />
+      )}
     </div>
   );
 }

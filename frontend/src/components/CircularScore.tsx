@@ -1,7 +1,7 @@
 import { formatDisplayScore } from "@/lib/score-format";
 
 interface Props {
-  value: number;
+  value: number | null;
   size?: number;
   label?: string;
 }
@@ -10,13 +10,15 @@ export function CircularScore({ value, size = 180, label = "Family Score" }: Pro
   const stroke = 12;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const dash = (value / 100) * c;
+  const dash = value === null ? 0 : (value / 100) * c;
   const color =
-    value >= 85
-      ? "var(--color-leaf)"
-      : value >= 70
-        ? "var(--color-sky-foreground)"
-        : "var(--color-primary)";
+    value === null
+      ? "var(--color-muted)"
+      : value >= 85
+        ? "var(--color-leaf)"
+        : value >= 70
+          ? "var(--color-sky-foreground)"
+          : "var(--color-primary)";
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">

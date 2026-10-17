@@ -389,11 +389,9 @@ function ComparePage() {
                   </div>
                 </div>
                 <CircularScore
-                  value={
-                    normalizeDisplayScore(
-                      side === "a" ? areaA?.scores?.overall : areaB?.scores?.overall,
-                    ) ?? 0
-                  }
+                  value={normalizeDisplayScore(
+                    side === "a" ? areaA?.scores?.overall : areaB?.scores?.overall,
+                  )}
                   size={130}
                 />
               </div>
