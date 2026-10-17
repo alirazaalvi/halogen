@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { COMPONENT_KEYS, MIN_COVERAGE, WEIGHTS, computeScores } from "./score";
+import { COMPONENT_KEYS, computeScores, MIN_COVERAGE, WEIGHTS } from "./score";
 
 const full = {
   year: 2025,
