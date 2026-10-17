@@ -5,6 +5,11 @@
 - Keep implementation decisions documented so future sessions can continue without repeating the same discovery work.
 - Prefer official upstream sources over ad hoc mirrors when a stronger canonical source exists.
 
+## Product Scope & Roadmap
+- Current scope is **Stockholm County only**. Planned expansion: **Sweden-wide first, then the UK**.
+- Design data model, ingestion, scoring, and provenance so country-specific parts (area units, sources, scales) are pluggable. Do not hard-code Stockholm/SCB/DeSO assumptions into shared code paths.
+- Data reliability rule: never present generated/fallback values as real data. Every metric must carry source, as-of date, and a real/estimated/missing status.
+
 ## Active Decisions
 - SCB source discovery now has a dedicated standalone MCP service under `scb-mcp/`.
 - Keep the SCB MCP separate from the existing Fastify backend so the app runtime and MCP runtime stay decoupled.
