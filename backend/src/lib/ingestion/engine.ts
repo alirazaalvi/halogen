@@ -3409,10 +3409,8 @@ export class IngestionEngine {
           continue;
         }
 
-        let action:
-          | "none"
-          | "district_scoped_ingestion"
-          | "backfill_named_district_deso_map" = "none";
+        let action: "none" | "district_scoped_ingestion" | "backfill_named_district_deso_map" =
+          "none";
         let notes: string | undefined;
 
         if (legacyDistrictId) {
