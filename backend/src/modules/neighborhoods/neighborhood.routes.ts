@@ -12,6 +12,7 @@ import {
 } from "../../db/schema";
 import { publicScores, toNumeric } from "../../lib/api/area-scores";
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
+import { latestDemographicsSql } from "../../lib/api/demographics-sql";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
 import { buildNamedDistrictSchoolResolutionQuery } from "./named-district-school-resolution";
@@ -241,6 +242,7 @@ function scorePayload(type: "district" | "deso", scores: Record<string, unknown>
     coverage: view.coverage,
     missing: view.missing,
     scoringVersion: view.scoringVersion,
+    overallPercentile: view.overallPercentile,
   };
 }
 
@@ -486,62 +488,30 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
 
     const demographicsRes = await pool.query(
       areaType === "namedDistrict"
-        ? `WITH latest_year AS (
-             SELECT MAX(d.year) AS year
-             FROM demographics d
-             JOIN named_district_deso_map ndm ON ndm.deso_id = d.deso_id
-             WHERE ndm.district_id = $1 AND d.quality IN ('measured', 'derived')
-           )
-           SELECT
-             SUM(d.population_total)::int AS population_total,
-             SUM(d.population_growth * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(CASE WHEN d.population_growth IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS population_growth,
-             SUM(d.median_income * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(CASE WHEN d.median_income IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS median_income,
-             SUM(d.higher_edu_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(CASE WHEN d.higher_edu_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS higher_edu_pct,
-             SUM(d.families_with_kids_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(CASE WHEN d.families_with_kids_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS families_with_kids_pct,
-             SUM(d.foreign_born_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(CASE WHEN d.foreign_born_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS foreign_born_pct,
-             ly.year,
+        ? `SELECT
+             SUM(l.population_total)::int AS population_total,
+             SUM(l.population_growth * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(CASE WHEN l.population_growth IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS population_growth,
+             SUM(l.median_income * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(CASE WHEN l.median_income IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS median_income,
+             SUM(l.higher_edu_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(CASE WHEN l.higher_edu_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS higher_edu_pct,
+             SUM(l.families_with_kids_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(CASE WHEN l.families_with_kids_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS families_with_kids_pct,
+             SUM(l.foreign_born_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
+               NULLIF(SUM(CASE WHEN l.foreign_born_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS foreign_born_pct,
+             MAX(l.year) AS year,
              COALESCE(
                jsonb_agg(DISTINCT src.link) FILTER (WHERE src.link IS NOT NULL),
                '[]'::jsonb
              ) AS source_links
-           FROM latest_year ly
-           JOIN named_district_deso_map ndm ON ndm.district_id = $1
-           JOIN demographics d ON d.deso_id = ndm.deso_id AND d.year = ly.year AND d.quality IN ('measured', 'derived')
-           LEFT JOIN LATERAL jsonb_array_elements(COALESCE(d.source_links, '[]'::jsonb)) src(link) ON TRUE
-           GROUP BY ly.year
-           LIMIT 1`
+           FROM named_district_deso_map ndm
+           CROSS JOIN LATERAL (${latestDemographicsSql("deso_id", "ndm.deso_id")}) l
+           LEFT JOIN LATERAL jsonb_array_elements(l.source_links) src(link) ON TRUE
+           WHERE ndm.district_id = $1`
         : isDistrict
-          ? `SELECT
-           population_total,
-           population_growth,
-           median_income,
-           higher_edu_pct,
-           families_with_kids_pct,
-           foreign_born_pct,
-            year,
-            COALESCE(source_links, '[]'::jsonb) AS source_links
-         FROM demographics
-         WHERE district_id = $1 AND quality IN ('measured', 'derived')
-         ORDER BY year DESC
-         LIMIT 1`
-          : `SELECT
-           population_total,
-           population_growth,
-           median_income,
-           higher_edu_pct,
-           families_with_kids_pct,
-           foreign_born_pct,
-            year,
-            COALESCE(source_links, '[]'::jsonb) AS source_links
-         FROM demographics
-         WHERE deso_id = $1 AND quality IN ('measured', 'derived')
-         ORDER BY year DESC
-         LIMIT 1`,
+          ? latestDemographicsSql("district_id")
+          : latestDemographicsSql("deso_id"),
       [deso_id],
     );
 

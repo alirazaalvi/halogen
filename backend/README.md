@@ -60,3 +60,14 @@ See `docs/specs/2026-10-17-data-reliability-spec.md`.
 bun run src/lib/ingestion/run.ts rescore     # recompute scores from stored data, no network
 bun test                                      # includes a guard against synthetic data
 ```
+
+Other commands:
+
+```bash
+bun run src/lib/ingestion/run.ts check-data                       # sanity + freshness, non-zero on errors
+bun run src/lib/ingestion/run.ts scb-describe <PxWeb table URL>  # list variable/value codes
+```
+
+SCB indicators (income, education, foreign born, families) are configured in
+`src/lib/ingestion/pxweb-indicator.ts`. A spec is only used if every code in it exists in
+the live table metadata; none are configured until their codes have been confirmed.

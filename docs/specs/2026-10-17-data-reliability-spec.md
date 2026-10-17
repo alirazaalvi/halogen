@@ -82,8 +82,8 @@ Status legend: **Implemented** (done on this branch, covered by tests), **Specif
 | DR-60 | Almost no tests for ingestion or scoring. | Unit tests for scoring, SCB period selection and run recording. | Implemented |
 | DR-61 | No CI. | GitHub Actions runs lint, typecheck and tests for backend, scb-mcp and frontend. | Implemented |
 | DR-62 | Nothing prevents synthetic data from returning. | A static guard test scans `backend/src` for banned helpers and `generated:true`/`fallback:true` markers. | Implemented |
-| DR-63 | Sanity checks on loaded data. | Range and total-consistency checks (e.g. DeSO populations vs municipality). | Specified (needs live data) |
-| DR-64 | Freshness monitoring. | Alert when a source is older than its cadence. | Specified (needs run history in production) |
+| DR-63 | Sanity checks on loaded data. | `run.ts check-data`: percent/score/performance ranges, duplicate years, Stockholm bounding box for schools and stops, population coverage. Exits non-zero on errors. (Municipality-total reconciliation needs an official total and is not included.) | Implemented |
+| DR-64 | Freshness monitoring. | `check-data` compares the last successful run per source with its maximum age. | Implemented |
 
 ### 3.6 Real data sources (Phase 1, needs live access)
 
@@ -95,7 +95,7 @@ identifiers must be confirmed against live metadata (use `scb-mcp`) before codin
 |---|---|---|---|
 | DR-30 | Environment: flood, green space, air | Länsstyrelsen flood layers, Lantmäteriet/Naturvårdsverket land cover, SMHI | Compute against DeSO polygons in PostGIS |
 | DR-31 | Housing prices | SCB property price statistics, or licensed (Booli/Hemnet) | Licensing decision required |
-| DR-32 | Income, education, foreign background at DeSO | SCB PxWeb (DeSO tables) | Use latest period from metadata |
+| DR-32 | Income, education, foreign background at DeSO | SCB PxWeb (DeSO tables) | Framework implemented (`pxweb-indicator.ts`): specs are validated against live table metadata before any query. **No indicator is configured yet** because table and value codes could not be confirmed offline; use `run.ts scb-describe <table URL>`, then add a spec to `STOCKHOLM_SCB_INDICATORS`. Candidate tables in the catalogue: `FolkmDesoLandKon` (region of birth), `FolkmDesoBakgrKon` (foreign/Swedish background), `HushallDesoTyp` (households). |
 | DR-33 | School results | Skolverket planning and follow-up (SIRIS) | Grades, merit value, eligibility, pupils |
 | DR-34 | Safety | Polisen vulnerable-areas list, Brå NTU, municipal crime figures | Crime counts at DeSO level are not public; be explicit about level |
 | DR-35 | Transport | Trafiklab GTFS Regional static feed | Point-in-polygon assignment to DeSO |
@@ -105,12 +105,17 @@ identifiers must be confirmed against live metadata (use `scb-mcp`) before codin
 
 | ID | Requirement | Status |
 |---|---|---|
-| DR-40 | Country-relative percentile normalisation of scores. | Specified |
+| DR-40 | Relative scoring. | `overall_percentile` (rank among scored Stockholm areas) is computed by `rescore` and returned by the API. | Implemented for Stockholm |
 | DR-41 | One canonical area key; retire the `districts` / `deso_compat` layer. | Specified |
 | DR-42 | Point-in-polygon school and stop assignment everywhere; remove `id LIKE '<deso>-%'` matching. | Partially implemented: the DeSO flow now assigns schools and stops by polygon containment. The legacy district flow still assigns schools to the nearest centroid (rows are marked `derived`). |
 | DR-43 | Search returns one result per real place (Kista currently appears three times). | Specified |
 
-### 3.8 Multi-country design (Sweden, then UK)
+### 3.8 Multi-country design (Sweden, then UK) — deferred
+
+Stockholm comes first. Nothing in this section is started; Stockholm-specific code is kept in
+one place per concern (for example `STOCKHOLM_BBOX`, `STOCKHOLM_SCB_INDICATORS`) to make the
+later split easier.
+
 
 - **DR-70 Country adapter.** Interface with `listAreas`, `demographics`, `schools`, `safety`,
   `transport`, `housing`, `environment`. Sweden wraps SCB, Skolverket, Brå/Polisen, Trafiklab,
@@ -135,9 +140,9 @@ identifiers must be confirmed against live metadata (use `scb-mcp`) before codin
 | DR-83 | Transport scoring matched stops by `id LIKE '<deso>-%'`, so real stops (with SL/ResRobot ids) never counted. | Spatial join against the DeSO polygon. | Implemented |
 | DR-84 | District scores hard-coded transport 80, housing 78 and green 75. | Components without inputs are `null`. | Implemented |
 | DR-85 | Nearest-centroid school assignment for legacy districts (capped at 8) is a heuristic. | Rows are marked `derived`; replace with containment (DR-42). | Open |
-| DR-86 | `ensureMunicipality` hard-codes municipality populations; pilot named-district centroids are hand-typed. | None yet. | Open |
+| DR-86 | `ensureMunicipality` hard-coded municipality populations; seed migrations hand-typed district populations. | Removed; migration 021 clears them. Population comes from SCB demographics. Pilot named-district centroid overrides remain hand-typed. | Partially implemented |
 | DR-87 | API detail responses invented schools, commute minutes, average age, ownership share and a "1.0 km" distance. | Removed. | Implemented |
-| DR-88 | Debug instrumentation read a developer's home directory and posted to `127.0.0.1:7777` from production routes. | Removed. | Implemented |
+| DR-88 | Debug instrumentation (also in the search route) read a developer's home directory and posted to `127.0.0.1:7777` from production routes. | Removed. | Implemented |
 | DR-89 | `Number(null)` is `0`, so missing scores rendered as 0 in the UI. | Null-safe formatting and nullable view models. | Implemented |
 
 ## 4. Verification status

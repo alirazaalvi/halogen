@@ -3,6 +3,7 @@ import {
   buildNamedDistrictSchoolResolutionQuery,
   selectNamedDistrictSchoolResolutionTier,
 } from "../../modules/neighborhoods/named-district-school-resolution";
+import { latestDemographicsSql } from "../api/demographics-sql";
 import { normalizeDistrictAlias } from "../district-aliases";
 import { computeScores, type ScoreResult, toNumberOrNull } from "../scoring/score";
 import {
@@ -11,6 +12,7 @@ import {
   NAMED_DISTRICT_PILOT_MUNICIPALITY_CODES,
   type NamedDistrictSeed,
 } from "./named-districts";
+import { fetchIndicator, type IndicatorValue, STOCKHOLM_SCB_INDICATORS } from "./pxweb-indicator";
 import { outcomeFromResult, RunRecorder } from "./run-recorder";
 import { type DesoPopulationResult, fetchDesoPopulation, growthPercent } from "./scb-population";
 import {
@@ -93,6 +95,7 @@ export class IngestionEngine {
   private readonly municipalitySchoolCache: Map<string, Promise<SchoolRecord[]>>;
   private stockholmCountyDistrictCoveragePromise: Promise<void> | null;
   private desoPopulationPromise: Promise<DesoPopulationResult> | null = null;
+  private readonly indicatorPromises = new Map<string, Promise<Map<string, IndicatorValue>>>();
   readonly recorder = new RunRecorder();
 
   constructor() {
@@ -723,11 +726,11 @@ export class IngestionEngine {
   }
 
   private async ensureMunicipality(region: string): Promise<number> {
-    const regionConfig: Record<string, { code: string; population: number }> = {
-      Stockholm: { code: "0180", population: 975551 },
-      Gothenburg: { code: "1480", population: 587549 },
-      Malmö: { code: "1280", population: 362133 },
-      Malmo: { code: "1280", population: 362133 },
+    const regionConfig: Record<string, { code: string }> = {
+      Stockholm: { code: "0180" },
+      Gothenburg: { code: "1480" },
+      Malmö: { code: "1280" },
+      Malmo: { code: "1280" },
     };
 
     const cfg = regionConfig[region] ?? {
@@ -736,25 +739,22 @@ export class IngestionEngine {
           .toLowerCase()
           .replace(/[^a-z0-9]/g, "")
           .slice(0, 10) || "0000",
-      population: 0,
     };
 
     const rawData = {
       source: "ingestion.ensureMunicipality",
       region,
       code: cfg.code,
-      population: cfg.population,
     };
 
     const result = await pool.query(
-      `INSERT INTO municipalities (name, code, population, raw_data)
-       VALUES ($1, $2, $3, $4::jsonb)
+      `INSERT INTO municipalities (name, code, raw_data)
+       VALUES ($1, $2, $3::jsonb)
        ON CONFLICT (code) DO UPDATE SET
          name = EXCLUDED.name,
-         population = COALESCE(EXCLUDED.population, municipalities.population),
          raw_data = EXCLUDED.raw_data
        RETURNING id`,
-      [region, cfg.code, cfg.population, JSON.stringify(rawData)],
+      [region, cfg.code, JSON.stringify(rawData)],
     );
 
     return Number(result.rows[0]?.id);
@@ -3234,6 +3234,65 @@ export class IngestionEngine {
     return this.desoPopulationPromise;
   }
 
+  private loadIndicator(id: string): Promise<Map<string, IndicatorValue>> {
+    let promise = this.indicatorPromises.get(id);
+    if (!promise) {
+      const spec = STOCKHOLM_SCB_INDICATORS.find((candidate) => candidate.id === id);
+      if (!spec) throw new Error(`Unknown SCB indicator ${id}`);
+      promise = (async () => {
+        const idsRes = await pool.query(`SELECT id FROM deso_areas`);
+        return fetchIndicator(
+          (url, init, label, timeoutMs) => this.fetchJson(url, init, label, timeoutMs),
+          spec,
+          idsRes.rows.map((row: { id: unknown }) => String(row.id)),
+        );
+      })().catch((error) => {
+        this.indicatorPromises.delete(id);
+        throw error;
+      });
+      this.indicatorPromises.set(id, promise);
+    }
+    return promise;
+  }
+
+  /**
+   * Stores the verified SCB indicators (income, education, foreign born, families) for one
+   * DeSO. Skipped while no indicator has been verified against the live table metadata.
+   */
+  async ingestScbIndicators(desoId: string) {
+    if (STOCKHOLM_SCB_INDICATORS.length === 0) {
+      return {
+        status: "skipped",
+        count: 0,
+        source: "scb-indicators",
+        reason: "no_verified_indicators",
+      };
+    }
+
+    let written = 0;
+    for (const spec of STOCKHOLM_SCB_INDICATORS) {
+      const entry = (await this.loadIndicator(spec.id)).get(desoId);
+      if (!entry) continue;
+      // `spec.column` is a closed union type, never user input.
+      await pool.query(
+        `INSERT INTO demographics (deso_id, year, ${spec.column}, source_links, raw_data, quality, fetched_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, 'measured', NOW())
+         ON CONFLICT (deso_id, year) DO UPDATE SET
+           ${spec.column} = EXCLUDED.${spec.column},
+           fetched_at = NOW()`,
+        [
+          desoId,
+          entry.year,
+          entry.value,
+          JSON.stringify(this.staticSource(`SCB ${spec.id}`, spec.tableUrl)),
+          JSON.stringify({ source: "scb_pxweb", indicator: spec.id, table: spec.tableUrl }),
+        ],
+      );
+      written += 1;
+    }
+    return { status: "ok", count: written, source: "scb-indicators" };
+  }
+
   /**
    * Stores SCB population for one DeSO. Only population and its growth between the two
    * latest published years are available at this level; income, education and the other
@@ -3525,14 +3584,7 @@ export class IngestionEngine {
     await this.ensureDesoArea(desoId);
     const q = IngestionEngine.SCORING_QUALITIES;
 
-    const demographicsRes = await pool.query(
-      `SELECT median_income, higher_edu_pct, families_with_kids_pct, population_growth
-       FROM demographics
-       WHERE deso_id = $1 AND quality IN ${q}
-       ORDER BY year DESC
-       LIMIT 1`,
-      [desoId],
-    );
+    const demographicsRes = await pool.query(latestDemographicsSql("deso_id"), [desoId]);
 
     const schoolsRes = await pool.query(
       `SELECT
@@ -3778,6 +3830,7 @@ export class IngestionEngine {
 
     const steps: Array<[string, string, () => Promise<{ status?: string; count?: number }>]> = [
       ["demographics", "scb", () => this.ingestSCB(desoId, region)],
+      ["demographic indicators", "scb_indicators", () => this.ingestScbIndicators(desoId)],
       ["crime", "bra", () => this.ingestCrime(desoId, year)],
       ["transport", "trafiklab", () => this.ingestTransport(desoId)],
       ["schools", "skolverket", () => this.ingestSchools(desoId)],
@@ -3819,6 +3872,20 @@ export class IngestionEngine {
         this.recorder.record({ source: "scoring", status: "failed", message });
       }
     }
+    // Rank among scored areas, so a score can be read relative to the rest of Stockholm.
+    await pool.query(
+      `UPDATE neighborhood_scores ns
+       SET overall_percentile = ranked.pct
+       FROM (
+         SELECT deso_id, ROUND((PERCENT_RANK() OVER (ORDER BY overall_score) * 100)::numeric, 2) AS pct
+         FROM neighborhood_scores
+         WHERE overall_score IS NOT NULL
+       ) ranked
+       WHERE ns.deso_id = ranked.deso_id`,
+    );
+    await pool.query(
+      `UPDATE neighborhood_scores SET overall_percentile = NULL WHERE overall_score IS NULL`,
+    );
     return { status: "complete", areas: res.rows.length, scored, withOverall };
   }
 

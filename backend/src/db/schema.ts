@@ -98,6 +98,7 @@ export const neighborhoodScores = pgTable("neighborhood_scores", {
   futureGrowthScore: numeric("future_growth_score"),
   dataCoverage: numeric("data_coverage"),
   scoringVersion: varchar("scoring_version", { length: 20 }),
+  overallPercentile: numeric("overall_percentile"),
 });
 
 export const districtScores = pgTable("district_scores", {

@@ -22,6 +22,8 @@ export type PublicScores = Record<PublicScoreKey, number | null> & {
   /** Score keys that have no value. */
   missing: PublicScoreKey[];
   scoringVersion: string | null;
+  /** Rank of the overall score among scored areas, 0..100, or null. */
+  overallPercentile: number | null;
 };
 
 export function toNumeric(value: unknown): number | null {
@@ -53,5 +55,6 @@ export function publicScores(scores: Record<string, unknown> | null | undefined)
       typeof source.scoringVersion === "string" && source.scoringVersion.length > 0
         ? source.scoringVersion
         : null,
+    overallPercentile: toNumeric(source.overallPercentile),
   };
 }

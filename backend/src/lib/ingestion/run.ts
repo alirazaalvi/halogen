@@ -56,6 +56,44 @@ async function main() {
     );
     result = await engine.ingestAll(arg1 ?? "123", arg2 ?? "Stockholm", year);
     console.log("[ingest] phase single-area done");
+  } else if (command === "scb-describe") {
+    // Lists a PxWeb table's variables and first value codes, to write a verified indicator spec.
+    const tableUrl = arg1 ?? "";
+    if (!tableUrl) throw new Error("usage: run.ts scb-describe <PxWeb table URL>");
+    const res = await fetch(tableUrl);
+    if (!res.ok) throw new Error(`SCB metadata request failed: ${res.status}`);
+    const meta = (await res.json()) as {
+      title?: string;
+      variables?: Array<{
+        code: string;
+        text: string;
+        elimination?: boolean;
+        values: string[];
+        valueTexts: string[];
+      }>;
+    };
+    console.log(meta.title);
+    for (const v of meta.variables ?? []) {
+      console.log(
+        `\n${v.code} (${v.text})${v.elimination ? " [eliminable]" : ""} - ${v.values.length} values`,
+      );
+      for (const [i, code] of v.values.slice(0, 15).entries()) {
+        console.log(`  ${code}  ${v.valueTexts[i]}`);
+      }
+    }
+    result = { status: "ok" };
+  } else if (command === "check-data") {
+    const { runDataChecks, formatIssues } = await import("../quality/checks");
+    const issues = await runDataChecks(pool);
+    console.log(formatIssues(issues));
+    result = {
+      status: issues.some((i) => i.severity === "error") ? "failed" : "ok",
+      issues: issues.length,
+    };
+    if (issues.some((i) => i.severity === "error")) {
+      await pool.end();
+      process.exit(1);
+    }
   } else if (command === "rescore") {
     console.log("[ingest] phase rescore started (no network)");
     result = await engine.rescoreAllAreas(year);

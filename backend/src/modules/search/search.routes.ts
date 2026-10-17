@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { ilike, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -24,24 +23,6 @@ type SearchRow = {
   lng?: number | null;
   searchSource: SearchSource;
 };
-
-// #region debug-point A:search-results
-const searchDebugConfig = (() => {
-  let debugServerUrl = "http://127.0.0.1:7777/event";
-  let debugSessionId = "tureberg-schools";
-
-  try {
-    const envFile = readFileSync(
-      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/tureberg-schools.env",
-      "utf8",
-    );
-    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
-    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
-  } catch {}
-
-  return { debugServerUrl, debugSessionId };
-})();
-// #endregion
 
 export async function searchRoutes(fastify: FastifyInstance, _options: object) {
   fastify.get("/search", async (request, reply) => {
@@ -214,32 +195,6 @@ export async function searchRoutes(fastify: FastifyInstance, _options: object) {
         break;
       }
     }
-
-    // #region debug-point A:search-results
-    if (normalizedQuery === "kista" || normalizedQuery === "tureberg") {
-      fetch(searchDebugConfig.debugServerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: searchDebugConfig.debugSessionId,
-          runId: "post-fix",
-          hypothesisId: "A",
-          location: "src/modules/search/search.routes.ts",
-          msg: "[DEBUG] Search results after dedupe-by-place fix",
-          data: {
-            query: q,
-            normalizedQuery,
-            namedDistrictIds: namedDistrictRows.map((row) => row.id),
-            aliasIds: aliasRows.map((row) => row.id),
-            districtIds: districtRowsWithSource.map((row) => row.id),
-            desoIds: desoRowsWithSource.map((row) => row.id),
-            uniqueIds: uniqueResults.map((row) => row.id),
-          },
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
 
     return sendApiSuccess(reply, {
       results: uniqueResults.map((row) => ({
