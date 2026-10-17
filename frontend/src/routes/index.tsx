@@ -47,6 +47,7 @@ type BackendFeaturedResponse = {
 };
 
 function toFiniteNumber(input: unknown): number | null {
+  if (input === null || input === undefined || input === "") return null;
   const n = Number(input);
   return Number.isFinite(n) ? Math.round(n) : null;
 }
@@ -411,10 +412,8 @@ function Landing() {
               We're a family of four moving from Berlin, work in Solna.
             </div>
             <div className="mt-3 rounded-2xl bg-primary/10 p-4 text-sm">
-              <span className="font-medium text-primary">Sollentuna</span> stands out — 94/100
-              schools, an 18 min train into the city, and a calm lakeside feel families love.{" "}
-              <span className="font-medium text-primary">Vasastan</span> is the lively city
-              alternative if you'd rather skip the commute.
+              I compare areas using the public data we have for them, and I tell you where data is
+              missing instead of guessing.
             </div>
           </div>
         </div>

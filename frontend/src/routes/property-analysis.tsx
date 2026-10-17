@@ -1,70 +1,183 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { CircularScore } from "@/components/CircularScore";
-import { areas, getArea } from "@/data/areas";
-import { formatDisplayScore } from "@/lib/score-format";
+import { toNumberOrNull, toSlug } from "@/lib/area-api";
+import { formatDisplayScore, formatOrDash } from "@/lib/score-format";
+
+const backendBaseUrl = import.meta.env.VITE_BACKEND_API_URL ?? "http://localhost:3001";
 
 export const Route = createFileRoute("/property-analysis")({
   head: () => ({
     meta: [
-      { title: "Property Investment Analysis — Swemove" },
+      { title: "Property Analysis — Swemove" },
       {
         name: "description",
-        content: "Analyze Swedish property prices with AI-powered investment insights.",
+        content: "Price per square metre and area scores for a property you are considering.",
       },
     ],
   }),
   component: PropertyAnalysisPage,
 });
 
-type PropertyInput = {
-  price: number;
-  area: number;
-  fee: number;
+type AreaOption = { id: string; name: string; municipality: string };
+
+type Analysis = {
+  metrics: {
+    pricePerSqm: number;
+    priceToIncomeRatio: number | null;
+    housingScore: number | null;
+  };
+  familyScore: number | null;
+  dataCoverage: number | null;
 };
 
-export function PropertyAnalysisPage() {
-  const [input, setInput] = useState<PropertyInput>({ price: 3700000, area: 96, fee: 6000 });
-  const [selectedArea, setSelectedArea] = useState(areas[0].slug);
-  const area = getArea(selectedArea) ?? areas[0];
+type AnalysisState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "no-area-data" }
+  | { status: "error" }
+  | { status: "ready"; analysis: Analysis };
 
-  const { pricePerSqm, avgPrice, marketPosition, affordability, riskScore } = calculateMetrics(
-    input,
-    area,
-  );
+export function PropertyAnalysisPage() {
+  const [price, setPrice] = useState("");
+  const [sqm, setSqm] = useState("");
+  const [query, setQuery] = useState("");
+  const [options, setOptions] = useState<AreaOption[]>([]);
+  const [selected, setSelected] = useState<AreaOption | null>(null);
+  const [state, setState] = useState<AnalysisState>({ status: "idle" });
+
+  const priceNum = Number(price);
+  const sqmNum = Number(sqm);
+  const pricePerSqm = priceNum > 0 && sqmNum > 0 ? Math.round(priceNum / sqmNum) : null;
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setOptions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(async () => {
+      try {
+        const url = new URL(`${backendBaseUrl}/api/search`);
+        url.searchParams.set("q", query.trim());
+        const res = await fetch(url.toString(), { signal: controller.signal });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          data?: {
+            results?: Array<{
+              id?: string;
+              deso_id?: string;
+              name?: string;
+              municipality?: string;
+            }>;
+          };
+        };
+        setOptions(
+          (json.data?.results ?? [])
+            .map((r) => ({
+              id: String(r.id ?? r.deso_id ?? ""),
+              name: String(r.name ?? ""),
+              municipality: String(r.municipality ?? ""),
+            }))
+            .filter((r) => r.id && r.name),
+        );
+      } catch {
+        setOptions([]);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [query]);
+
+  useEffect(() => {
+    if (!selected || pricePerSqm === null) {
+      setState({ status: "idle" });
+      return;
+    }
+    const controller = new AbortController();
+    setState({ status: "loading" });
+    (async () => {
+      try {
+        const res = await fetch(`${backendBaseUrl}/api/investment/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ price: priceNum, area: sqmNum, deso_id: selected.id }),
+          signal: controller.signal,
+        });
+        if (res.status === 404) {
+          setState({ status: "no-area-data" });
+          return;
+        }
+        if (!res.ok) {
+          setState({ status: "error" });
+          return;
+        }
+        const json = (await res.json()) as { data?: Record<string, unknown> };
+        const metrics = (json.data?.metrics ?? {}) as Record<string, unknown>;
+        setState({
+          status: "ready",
+          analysis: {
+            metrics: {
+              pricePerSqm: Number(metrics.pricePerSqm),
+              priceToIncomeRatio: toNumberOrNull(metrics.priceToIncomeRatio),
+              housingScore: toNumberOrNull(metrics.housingScore),
+            },
+            familyScore: toNumberOrNull(json.data?.familyScore),
+            dataCoverage: toNumberOrNull(json.data?.dataCoverage),
+          },
+        });
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") setState({ status: "error" });
+      }
+    })();
+    return () => controller.abort();
+  }, [selected, priceNum, sqmNum, pricePerSqm]);
 
   return (
     <div className="min-h-screen bg-background">
       <SiteHeader />
 
       <section className="mx-auto max-w-7xl px-6 py-12">
-        <h1 className="font-display text-4xl">House Investment Analysis</h1>
+        <h1 className="font-display text-4xl">Property analysis</h1>
         <p className="mt-2 text-muted-foreground">
-          Get AI-powered insights on property value, market trends, and investment potential.
+          Price per square metre for a property, next to the stored scores for its area. Market
+          benchmarks and commute times need data we do not have yet, so they are not shown.
         </p>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-2">
-          {/* Input Form */}
           <div className="rounded-3xl border border-border bg-card p-8">
-            <h2 className="font-display text-2xl mb-6">Property Details</h2>
-
+            <h2 className="font-display text-2xl mb-6">Property details</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                   Area
                 </label>
-                <select
-                  value={selectedArea}
-                  onChange={(e) => setSelectedArea(e.target.value)}
+                <input
+                  value={selected ? `${selected.name}, ${selected.municipality}` : query}
+                  onChange={(e) => {
+                    setSelected(null);
+                    setQuery(e.target.value);
+                  }}
+                  placeholder="Search for an area"
                   className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 font-display text-lg outline-none focus:border-primary"
-                >
-                  {areas.map((a) => (
-                    <option key={a.slug} value={a.slug}>
-                      {a.name}, {a.region}
-                    </option>
-                  ))}
-                </select>
+                />
+                {!selected && options.length > 0 && (
+                  <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-background">
+                    {options.slice(0, 6).map((o) => (
+                      <li key={o.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelected(o)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-secondary"
+                        >
+                          {o.name}, {o.municipality}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>
@@ -73,198 +186,94 @@ export function PropertyAnalysisPage() {
                 </label>
                 <input
                   type="number"
-                  value={input.price}
-                  onChange={(e) => setInput({ ...input, price: parseInt(e.target.value) || 0 })}
+                  min={0}
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
                   className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 font-display text-lg outline-none focus:border-primary"
                 />
               </div>
 
               <div>
                 <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Living Area (sqm)
+                  Living area (sqm)
                 </label>
                 <input
                   type="number"
-                  value={input.area}
-                  onChange={(e) => setInput({ ...input, area: parseInt(e.target.value) || 0 })}
-                  className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 font-display text-lg outline-none focus:border-primary"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Monthly Fee (SEK)
-                </label>
-                <input
-                  type="number"
-                  value={input.fee}
-                  onChange={(e) => setInput({ ...input, fee: parseInt(e.target.value) || 0 })}
+                  min={0}
+                  value={sqm}
+                  onChange={(e) => setSqm(e.target.value)}
                   className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 font-display text-lg outline-none focus:border-primary"
                 />
               </div>
             </div>
           </div>
 
-          {/* Investment Metrics */}
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-border bg-card p-8">
-              <h2 className="font-display text-2xl mb-6">Investment Metrics</h2>
-
-              <div className="grid gap-4 grid-cols-2">
-                <MetricCard
-                  label="Price per sqm"
-                  value={`${Math.round(pricePerSqm).toLocaleString()} SEK`}
-                />
-                <MetricCard
-                  label="Avg area price"
-                  value={`${Math.round(avgPrice).toLocaleString()} SEK`}
-                />
-                <MetricCard
-                  label="Market position"
-                  value={marketPosition}
-                  tone={
-                    marketPosition === "Above average"
-                      ? "sky"
-                      : marketPosition === "Below average"
-                        ? "leaf"
-                        : "primary"
-                  }
-                />
-                <MetricCard label="Affordability" value={affordability} />
-                <MetricCard label="Risk score" value={`${formatDisplayScore(riskScore)}/100`} />
-                <MetricCard
-                  label="Housing score"
-                  value={`${formatDisplayScore(area.scores.housing)}/100`}
-                />
-              </div>
+          <div className="rounded-3xl border border-border bg-card p-8">
+            <h2 className="font-display text-2xl mb-6">Results</h2>
+            <div className="grid gap-4 grid-cols-2">
+              <MetricCard
+                label="Price per sqm"
+                value={formatOrDash(pricePerSqm, (n) => `${n.toLocaleString()} SEK`)}
+              />
+              <MetricCard
+                label="Price / median income"
+                value={
+                  state.status === "ready"
+                    ? formatOrDash(state.analysis.metrics.priceToIncomeRatio, (n) => `${n}×`)
+                    : "-"
+                }
+              />
+              <MetricCard
+                label="Housing stock score"
+                value={
+                  state.status === "ready"
+                    ? `${formatDisplayScore(state.analysis.metrics.housingScore)}/100`
+                    : "-"
+                }
+              />
+              <MetricCard
+                label="Schools score"
+                value={
+                  state.status === "ready"
+                    ? `${formatDisplayScore(state.analysis.familyScore)}/100`
+                    : "-"
+                }
+              />
             </div>
-
-            <div className="rounded-3xl border border-border bg-card p-8">
-              <h2 className="font-display text-2xl mb-6">Commute to Stockholm</h2>
-              <div className="space-y-3">
-                <CommuteRow label="🚆 Train" minutes={area.commute.transit} />
-                <CommuteRow label="🚗 Car" minutes={area.commute.car} />
-                <CommuteRow label="🚲 Bike" minutes={area.commute.bike} />
-              </div>
-              <div className="mt-6">
-                <CircularScore
-                  value={calculateCommuteScore(area.commute.transit)}
-                  label="Commute Score"
-                />
-              </div>
-            </div>
+            <p className="mt-6 text-sm text-muted-foreground">
+              {state.status === "idle" && "Choose an area and enter a price and size."}
+              {state.status === "loading" && "Loading area scores…"}
+              {state.status === "no-area-data" && "There are no stored scores for this area yet."}
+              {state.status === "error" && "The data service is not responding."}
+              {state.status === "ready" &&
+                `Area data coverage: ${formatOrDash(state.analysis.dataCoverage, (n) => `${Math.round(n * 100)}%`)}. A “-” means we have no data for it.`}
+            </p>
           </div>
         </div>
 
-        {/* Family Score Section */}
-        <section className="mt-16 rounded-3xl border border-border bg-card p-8">
-          <h2 className="font-display text-2xl mb-6">Family Score</h2>
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-4">
-              <FamilyMetric label="Schools" score={area.scores.schools} />
-              <FamilyMetric
-                label="Playgrounds"
-                score={Math.min(
-                  100,
-                  (area.amenities?.find((a) => a.label === "Playgrounds")?.count ?? 0) * 3 || 80,
-                )}
-              />
-              <FamilyMetric
-                label="Healthcare"
-                score={Math.min(
-                  100,
-                  (area.amenities?.find((a) => a.label === "Healthcare")?.count ?? 0) * 15 || 90,
-                )}
-              />
-              <FamilyMetric label="Parks" score={area.scores.green} />
-              <FamilyMetric
-                label="Sports facilities"
-                score={Math.min(
-                  100,
-                  (area.amenities?.find((a) => a.label === "Football Clubs")?.count ?? 0) * 14 ||
-                    75,
-                )}
-              />
-            </div>
-            <div className="flex items-center justify-center">
-              <CircularScore value={area.scores.schools} label="Family Score" size={200} />
-            </div>
+        {selected && (
+          <div className="mt-10 text-center">
+            <Link
+              to="/areas/$slug"
+              params={{ slug: toSlug(selected.name) }}
+              className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background hover:opacity-90"
+            >
+              View full neighborhood report →
+            </Link>
           </div>
-        </section>
-
-        <div className="mt-10 text-center">
-          <Link
-            to="/areas/$slug"
-            params={{ slug: area.slug }}
-            className="inline-flex rounded-full bg-foreground px-6 py-3 text-sm font-medium text-background hover:opacity-90"
-          >
-            View full neighborhood report →
-          </Link>
-        </div>
+        )}
       </section>
     </div>
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "primary" | "leaf" | "sky";
-}) {
-  const bgClass =
-    tone === "leaf"
-      ? "bg-leaf/15 text-leaf-foreground"
-      : tone === "sky"
-        ? "bg-sky-10 text-sky-foreground"
-        : "bg-secondary text-primary";
-
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
-      <div className={`mt-2 inline-flex rounded-full px-3 py-1 text-sm font-medium ${bgClass}`}>
+      <div className="mt-2 inline-flex rounded-full bg-secondary px-3 py-1 text-sm font-medium text-primary">
         {value}
       </div>
     </div>
   );
-}
-
-function CommuteRow({ label, minutes }: { label: string; minutes: number }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm">{label}</span>
-      <span className="font-display text-lg">{minutes} min</span>
-    </div>
-  );
-}
-
-function FamilyMetric({ label, score }: { label: string; score: number }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm">{label}</span>
-      <span className="font-display text-lg">{formatDisplayScore(score)}/100</span>
-    </div>
-  );
-}
-
-function calculateMetrics(input: PropertyInput, area: (typeof areas)[0]) {
-  const pricePerSqm = input.price / input.area;
-  const avgPrice = area.monthlyEstimate * 12 * 20; // estimated avg price proxy
-  const diff = ((pricePerSqm - avgPrice / 50) / (avgPrice / 50)) * 100;
-  const marketPosition = diff > 5 ? "Above average" : diff < -5 ? "Below average" : "Average";
-  const affordability = (
-    input.price / area.demographics.medianIncome < 7 ? "Affordable" : "Premium"
-  ).replace(/(.)/, (c) => c.toUpperCase());
-  const riskScore = area.scores.growth >= 85 ? 25 : area.scores.growth >= 70 ? 45 : 65;
-
-  return { pricePerSqm, avgPrice, marketPosition, affordability, riskScore };
-}
-
-function calculateCommuteScore(transitMinutes: number): number {
-  if (transitMinutes <= 15) return Math.round(100 - transitMinutes * 2);
-  if (transitMinutes <= 30) return Math.round(85 - (transitMinutes - 15) * 2);
-  return Math.round(60 - (transitMinutes - 30) * 1.5);
 }

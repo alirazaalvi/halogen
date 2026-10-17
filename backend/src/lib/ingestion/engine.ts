@@ -4,18 +4,29 @@ import {
   selectNamedDistrictSchoolResolutionTier,
 } from "../../modules/neighborhoods/named-district-school-resolution";
 import { normalizeDistrictAlias } from "../district-aliases";
+import { computeScores, type ScoreResult, toNumberOrNull } from "../scoring/score";
 import {
   buildNamedDistrictId,
   fetchStockholmOfficialNamedDistrictSeeds,
   NAMED_DISTRICT_PILOT_MUNICIPALITY_CODES,
   type NamedDistrictSeed,
 } from "./named-districts";
+import { outcomeFromResult, RunRecorder } from "./run-recorder";
+import { type DesoPopulationResult, fetchDesoPopulation, growthPercent } from "./scb-population";
 import {
   discoverStockholmCountyDesoSeeds,
   extractStockholmCountyDesoGeometries,
   type StockholmDesoGeometryRecord,
 } from "./stockholm-deso";
 import { STOCKHOLM_MANUAL_DISTRICT_ALIAS_SEEDS } from "./stockholm-district-aliases";
+
+/** Thrown when a source cannot run for a configuration reason (e.g. a missing API key). */
+export class SourceSkipped extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+    this.name = "SourceSkipped";
+  }
+}
 
 const PILOT_NAMED_DISTRICT_CENTROID_OVERRIDES: Record<string, { lat: number; lng: number }> = {
   "ND-0183-hallonbergen": { lat: 59.37537, lng: 17.96907 },
@@ -28,19 +39,6 @@ type SourceLink = {
   url: string;
 };
 
-type DemographicRecord = {
-  deso_id: string;
-  year: number;
-  population_total: number;
-  population_growth: number;
-  median_income: number;
-  higher_edu_pct: number;
-  foreign_born_pct: number;
-  families_with_kids_pct: number;
-  source_links?: SourceLink[];
-  raw_data?: Record<string, unknown>;
-};
-
 type SchoolRecord = {
   deso_id?: string;
   district_id?: string;
@@ -49,10 +47,11 @@ type SchoolRecord = {
   municipality_code?: string;
   name: string;
   address?: string;
-  lat: number;
-  lng: number;
-  performance: number;
-  students: number;
+  lat: number | null;
+  lng: number | null;
+  performance: number | null;
+  students: number | null;
+  quality?: "measured" | "derived";
   source_links?: SourceLink[];
   raw_data?: Record<string, unknown>;
 };
@@ -63,44 +62,7 @@ type StopRecord = {
   type: string;
   lat: number;
   lng: number;
-  routes: number;
-  source_links?: SourceLink[];
-  raw_data?: Record<string, unknown>;
-};
-
-type PropertyRecord = {
-  property_id: string;
-  address: string;
-  lat: number;
-  lng: number;
-  building_year: number;
-  source_links?: SourceLink[];
-  raw_data?: Record<string, unknown>;
-};
-
-type SmhiRecord = {
-  deso_id: string;
-  year: number;
-  source_station: string;
-  flood_risk: number;
-  green_space_ratio: number;
-  air_quality_index: number;
-  temperature_avg: number;
-  rainfall_mm: number;
-  wind_exposure_index: number;
-  source_links?: SourceLink[];
-  raw_data?: Record<string, unknown>;
-};
-
-type MunicipalProjectRecord = {
-  external_id: string;
-  title: string;
-  project_type: string;
-  lat: number;
-  lng: number;
-  status: string;
-  confidence: number;
-  source_municipality: string;
+  routes: number | null;
   source_links?: SourceLink[];
   raw_data?: Record<string, unknown>;
 };
@@ -130,6 +92,8 @@ export class IngestionEngine {
   private readonly regions: string[];
   private readonly municipalitySchoolCache: Map<string, Promise<SchoolRecord[]>>;
   private stockholmCountyDistrictCoveragePromise: Promise<void> | null;
+  private desoPopulationPromise: Promise<DesoPopulationResult> | null = null;
+  readonly recorder = new RunRecorder();
 
   constructor() {
     this.regions = ["Stockholm", "Gothenburg", "Malmö"];
@@ -145,18 +109,38 @@ export class IngestionEngine {
     return Array.isArray(value) ? value : [];
   }
 
-  private toNumber(value: unknown, fallback = 0): number {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
+  private async runStep<T extends { status?: string; count?: number; reason?: string }>(
+    source: string,
+    fn: () => Promise<T>,
+  ): Promise<T | null> {
+    try {
+      const result = await fn();
+      this.recorder.record(outcomeFromResult(source, result));
+      return result;
+    } catch (error) {
+      if (error instanceof SourceSkipped) {
+        this.recorder.record({ source, status: "skipped", message: error.reason });
+        return null;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[ingest:${source}] failed: ${message}`);
+      this.recorder.record({ source, status: "failed", message });
+      return null;
+    }
   }
 
-  private clampScore(value: number): number {
-    if (!Number.isFinite(value)) return 0;
-    return Math.max(0, Math.min(100, value));
-  }
-
-  private roundScore(value: number): number {
-    return Math.round(this.clampScore(value) * 100) / 100;
+  private async getDesoCentroid(desoId: string): Promise<{ lat: number; lng: number } | null> {
+    const res = await pool.query(
+      `SELECT ST_Y(centroid) AS lat, ST_X(centroid) AS lng
+       FROM deso_areas
+       WHERE id = $1 AND centroid IS NOT NULL`,
+      [desoId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    const lat = Number(row.lat);
+    const lng = Number(row.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   }
 
   private dedupeSourceLinks(links: SourceLink[]): SourceLink[] {
@@ -184,40 +168,6 @@ export class IngestionEngine {
 
   private staticSource(label: string, url: string): SourceLink[] {
     return [{ label, url }];
-  }
-
-  private hashString(value: string): number {
-    let hash = 0;
-    for (let i = 0; i < value.length; i += 1) {
-      hash = (hash << 5) - hash + value.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash);
-  }
-
-  private areaFactor(desoId: string, salt: string, min: number, max: number): number {
-    const hash = this.hashString(`${desoId}:${salt}`);
-    const normalized = (hash % 1000) / 1000;
-    return min + normalized * (max - min);
-  }
-
-  private areaInt(desoId: string, salt: string, min: number, max: number): number {
-    const n = this.areaFactor(desoId, salt, min, max);
-    return Math.round(n);
-  }
-
-  private areaTrend(desoId: string): "up" | "down" | "stable" {
-    const v = this.hashString(`${desoId}:trend`) % 3;
-    if (v === 0) return "down";
-    if (v === 1) return "stable";
-    return "up";
-  }
-
-  private areaAnchor(desoId: string): { lat: number; lng: number } {
-    return {
-      lat: this.areaFactor(desoId, "lat", 59.05, 59.65),
-      lng: this.areaFactor(desoId, "lng", 17.4, 18.5),
-    };
   }
 
   private formatDuration(ms: number): string {
@@ -772,62 +722,6 @@ export class IngestionEngine {
     ]);
   }
 
-  private normalizeCoordinatePair(
-    lat: number,
-    lng: number,
-    fallback: { lat: number; lng: number },
-    offset: number,
-  ): { lat: number; lng: number } {
-    const validLat = Number.isFinite(lat) && Math.abs(lat) > 1;
-    const validLng = Number.isFinite(lng) && Math.abs(lng) > 1;
-
-    if (validLat && validLng) {
-      return { lat, lng };
-    }
-
-    return {
-      lat: fallback.lat + offset * 0.001,
-      lng: fallback.lng + offset * 0.001,
-    };
-  }
-
-  private buildDemographicProfile(
-    desoId: string,
-    populationTotal: number,
-  ): Omit<DemographicRecord, "deso_id" | "year" | "population_total"> {
-    const populationGrowth = Number(this.areaFactor(desoId, "growth", -1.2, 5.8).toFixed(2));
-    const medianIncome = this.areaInt(desoId, "income", 330000, 560000);
-    const higherEduPct = this.areaInt(desoId, "edu", 28, 74);
-    const foreignBornPct = this.areaInt(desoId, "foreign", 6, 48);
-    const kidsBase = populationTotal > 30000 ? 32 : 38;
-    const familiesWithKidsPct = this.areaInt(desoId, "kids", kidsBase - 10, kidsBase + 18);
-
-    return {
-      population_growth: populationGrowth,
-      median_income: medianIncome,
-      higher_edu_pct: higherEduPct,
-      foreign_born_pct: foreignBornPct,
-      families_with_kids_pct: familiesWithKidsPct,
-    };
-  }
-
-  private fallbackSmhiObservation(desoId: string, year: number): SmhiRecord {
-    const temperature = Number(this.areaFactor(desoId, "temperature", 5.2, 10.9).toFixed(2));
-    const rainfall = Number(this.areaFactor(desoId, "rainfall", 460, 760).toFixed(1));
-
-    return {
-      deso_id: desoId,
-      year,
-      source_station: `SMHI-${desoId}`,
-      flood_risk: Number(this.areaFactor(desoId, "flood", 8.5, 34.5).toFixed(2)),
-      green_space_ratio: Number(this.areaFactor(desoId, "green", 16.5, 46.5).toFixed(2)),
-      air_quality_index: Number(this.areaFactor(desoId, "air", 18.2, 49.8).toFixed(2)),
-      temperature_avg: temperature,
-      rainfall_mm: rainfall,
-      wind_exposure_index: Number(this.areaFactor(desoId, "wind", 2.1, 7.2).toFixed(2)),
-    };
-  }
-
   private async ensureMunicipality(region: string): Promise<number> {
     const regionConfig: Record<string, { code: string; population: number }> = {
       Stockholm: { code: "0180", population: 975551 },
@@ -953,7 +847,6 @@ export class IngestionEngine {
       (options?.region ? await this.ensureMunicipality(options.region) : null);
     const normalizedName = options?.areaName?.trim();
     const geometryGeoJson = options?.geometryGeoJson ?? null;
-    const anchor = this.areaAnchor(desoId);
     const rawData = {
       source: "ingestion.ensureDesoArea",
       deso_id: desoId,
@@ -980,11 +873,11 @@ export class IngestionEngine {
            WHEN $5::text IS NULL THEN NULL
            ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326))
          END,
-         COALESCE(
-           ST_PointOnSurface(ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326))),
-           ST_SetSRID(ST_MakePoint($6, $7), 4326)
-         ),
-         $8::jsonb
+         CASE
+           WHEN $5::text IS NULL THEN NULL
+           ELSE ST_PointOnSurface(ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326)))
+         END,
+         $6::jsonb
        )
        ON CONFLICT (id) DO UPDATE SET
          name = CASE
@@ -1004,39 +897,9 @@ export class IngestionEngine {
         municipalityId,
         desoId,
         geometryGeoJson,
-        anchor.lng,
-        anchor.lat,
         JSON.stringify(rawData),
       ],
     );
-  }
-
-  private parseLantmaterietAtom(xml: string, desoId: string): PropertyRecord[] {
-    const entries = [...xml.matchAll(/<entry[\s\S]*?<\/entry>/g)];
-
-    const rows = entries.map((entry, index) => {
-      const block = entry[0];
-      const title = block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
-      const id = block.match(/<id[^>]*>([\s\S]*?)<\/id>/i)?.[1]?.trim();
-      const pos = block.match(/<gml:pos[^>]*>([\s\S]*?)<\/gml:pos>/i)?.[1]?.trim();
-
-      const [a, b] = (pos ?? "").split(/\s+/).map((v) => this.toNumber(v, Number.NaN));
-      const latCandidate = Number.isFinite(a) ? a : 59.4044 + index * 0.001;
-      const lngCandidate = Number.isFinite(b) ? b : 17.9489 + index * 0.001;
-
-      const likelyLat = Math.abs(latCandidate) <= 90 ? latCandidate : lngCandidate;
-      const likelyLng = Math.abs(latCandidate) <= 90 ? lngCandidate : latCandidate;
-
-      return {
-        property_id: id?.slice(-50) || `PROP-${desoId}-${index + 1}`,
-        address: title || `Address ${index + 1}, ${desoId}`,
-        lat: likelyLat,
-        lng: likelyLng,
-        building_year: this.areaInt(desoId, `building:${index}`, 1965, 2023),
-      } satisfies PropertyRecord;
-    });
-
-    return rows;
   }
 
   private async fetchJson(
@@ -1200,15 +1063,6 @@ export class IngestionEngine {
 
     cache.set(cacheKey, null);
     return null;
-  }
-
-  private decodeXmlEntities(value: string): string {
-    return value
-      .replaceAll("&amp;", "&")
-      .replaceAll("&lt;", "<")
-      .replaceAll("&gt;", ">")
-      .replaceAll("&quot;", '"')
-      .replaceAll("&#39;", "'");
   }
 
   private normalizeWhitespace(value: string): string {
@@ -1558,10 +1412,9 @@ export class IngestionEngine {
   private selectSchoolCoordinates(options: {
     explicitGeo?: { lat: number; lng: number } | null;
     geocodedGeo?: { lat: number; lng: number } | null;
-    fallbackGeo: { lat: number; lng: number };
   }): {
-    lat: number;
-    lng: number;
+    lat: number | null;
+    lng: number | null;
     source: string;
     status: "canonical" | "fallback";
     warnings: Array<Record<string, unknown>>;
@@ -1606,20 +1459,11 @@ export class IngestionEngine {
 
     this.addSchoolWarning(
       warnings,
-      "coordinate_fallback",
-      "School coordinates fell back to the area anchor because neither detail coordinates nor geocoding were available.",
-      {
-        fallback_coordinates: options.fallbackGeo,
-      },
+      "coordinate_missing",
+      "School has no explicit coordinates and its address could not be geocoded; it is stored without a location.",
     );
 
-    return {
-      lat: options.fallbackGeo.lat,
-      lng: options.fallbackGeo.lng,
-      source: "area_anchor_fallback",
-      status: "fallback",
-      warnings,
-    };
+    return { lat: null, lng: null, source: "none", status: "fallback", warnings };
   }
 
   private extractMunicipalityCode(
@@ -1831,7 +1675,9 @@ export class IngestionEngine {
            performance = $9,
            student_count = $10,
            source_links = $11::jsonb,
-           raw_data = $12::jsonb
+           raw_data = $12::jsonb,
+           quality = $14,
+           fetched_at = NOW()
          WHERE id = $13`,
         [
           scopeValue,
@@ -1847,6 +1693,7 @@ export class IngestionEngine {
           normalizedSourceLinks,
           rawDataJson,
           existingRes.rows[0].id,
+          school.quality ?? "measured",
         ],
       );
       return;
@@ -1854,8 +1701,8 @@ export class IngestionEngine {
 
     const conflictTarget = school.district_id ? "(district_id, name)" : "(deso_id, name)";
     await pool.query(
-      `INSERT INTO schools (${scopeColumn}, school_unit_code, school_status, municipality_code, name, address, coordinates, performance, student_count, source_links, raw_data)
-       VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, ST_Point($7, $8), $9, $10, $11::jsonb, $12::jsonb)
+      `INSERT INTO schools (${scopeColumn}, school_unit_code, school_status, municipality_code, name, address, coordinates, performance, student_count, source_links, raw_data, quality)
+       VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, ST_Point($7, $8), $9, $10, $11::jsonb, $12::jsonb, $13)
        ON CONFLICT ${conflictTarget} DO UPDATE SET
          school_unit_code = COALESCE(EXCLUDED.school_unit_code, schools.school_unit_code),
          school_status = COALESCE(EXCLUDED.school_status, schools.school_status),
@@ -1865,7 +1712,9 @@ export class IngestionEngine {
          performance = EXCLUDED.performance,
          student_count = EXCLUDED.student_count,
          source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data`,
+         raw_data = EXCLUDED.raw_data,
+         quality = EXCLUDED.quality,
+         fetched_at = NOW()`,
       [
         scopeValue,
         schoolUnitCode,
@@ -1879,149 +1728,9 @@ export class IngestionEngine {
         school.students,
         normalizedSourceLinks,
         rawDataJson,
+        school.quality ?? "measured",
       ],
     );
-  }
-
-  private parseMunicipalCsw(xml: string, desoId: string): MunicipalProjectRecord[] {
-    const records = [...xml.matchAll(/<csw:Record[\s\S]*?<\/csw:Record>/g)];
-
-    return records
-      .map((match, index) => {
-        const block = match[0];
-
-        const id = block.match(/<dc:identifier[^>]*>([\s\S]*?)<\/dc:identifier>/i)?.[1]?.trim();
-        const title = block.match(/<dc:title[^>]*>([\s\S]*?)<\/dc:title>/i)?.[1]?.trim();
-        const dcType = block.match(/<dc:type[^>]*>([\s\S]*?)<\/dc:type>/i)?.[1]?.trim();
-
-        const uriRaw = block.match(/<dc:URI[^>]*>([\s\S]*?)<\/dc:URI>/i)?.[1]?.trim();
-        const uri = uriRaw ? this.decodeXmlEntities(uriRaw) : "";
-
-        const lower = block
-          .match(/<ows:LowerCorner[^>]*>([\s\S]*?)<\/ows:LowerCorner>/i)?.[1]
-          ?.trim();
-        const upper = block
-          .match(/<ows:UpperCorner[^>]*>([\s\S]*?)<\/ows:UpperCorner>/i)?.[1]
-          ?.trim();
-
-        const [lowerLat, lowerLng] = (lower ?? "")
-          .split(/\s+/)
-          .map((v) => this.toNumber(v, Number.NaN));
-        const [upperLat, upperLng] = (upper ?? "")
-          .split(/\s+/)
-          .map((v) => this.toNumber(v, Number.NaN));
-
-        const hasBbox =
-          Number.isFinite(lowerLat) &&
-          Number.isFinite(lowerLng) &&
-          Number.isFinite(upperLat) &&
-          Number.isFinite(upperLng);
-
-        const lat = hasBbox ? (lowerLat + upperLat) / 2 : 59.33 + index * 0.002;
-        const lng = hasBbox ? (lowerLng + upperLng) / 2 : 18.06 + index * 0.002;
-
-        const projectType =
-          dcType && dcType.length > 0
-            ? dcType
-            : uri.includes("MapServer")
-              ? "map-service"
-              : "dataset";
-
-        return {
-          external_id: id || `MUNI-${desoId}-C${index + 1}`,
-          title: title || `Municipal dataset ${index + 1}`,
-          project_type: projectType,
-          lat,
-          lng,
-          status: "cataloged",
-          confidence: Number(
-            this.areaFactor(desoId, `project-confidence:${id ?? index}:${uri}`, 58, 93).toFixed(1),
-          ),
-          source_municipality: "Stockholm",
-          source_links: this.dedupeSourceLinks([
-            { label: "Municipal Open Data", url: "https://dataportalen.stockholm.se/" },
-            ...(uri ? [{ label: "Dataset", url: uri }] : []),
-          ]),
-          raw_data: { xml, block },
-        } satisfies MunicipalProjectRecord;
-      })
-      .filter((row) => row.title.length > 0)
-      .slice(0, this.areaInt(desoId, "project-limit", 10, 25));
-  }
-
-  private async fetchScbDemographics(desoId: string, region: string): Promise<DemographicRecord[]> {
-    const endpoint =
-      process.env.SCB_API_URL ??
-      "https://api.scb.se/OV0104/v1/doris/en/ssd/START/BE/BE0101/BE0101A/BefolkningNy";
-
-    const countyCodeByRegion: Record<string, string> = {
-      Stockholm: "01",
-      Gothenburg: "14",
-      Malmö: "12",
-    };
-    const regionCode = /^\d{4}$/.test(desoId) ? desoId : (countyCodeByRegion[region] ?? "01");
-    const currentYear = new Date().getFullYear().toString();
-
-    const payload = await this.fetchJson(
-      endpoint,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: [
-            { code: "Region", selection: { filter: "item", values: [regionCode] } },
-            { code: "Civilstand", selection: { filter: "all", values: ["*"] } },
-            { code: "Alder", selection: { filter: "item", values: ["tot"] } },
-            { code: "Kon", selection: { filter: "all", values: ["*"] } },
-            { code: "ContentsCode", selection: { filter: "item", values: ["BE0101N1"] } },
-            { code: "Tid", selection: { filter: "item", values: [currentYear] } },
-          ],
-          response: { format: "json-stat2" },
-        }),
-      },
-      "SCB",
-    );
-
-    const root = this.toRecord(payload);
-    const data = this.toArray(root?.data);
-    const parsedYear = Number.parseInt(currentYear, 10);
-
-    const rows = data
-      .map((item) => this.toRecord(item))
-      .filter((item): item is Record<string, unknown> => item !== null)
-      .map((item, index) => {
-        const values = this.toArray(item.values);
-        const first = this.toNumber(values[0], 17000 + index * 50);
-
-        const profile = this.buildDemographicProfile(desoId, first);
-
-        return {
-          deso_id: desoId,
-          year: parsedYear,
-          population_total: first,
-          population_growth: profile.population_growth,
-          median_income: profile.median_income,
-          higher_edu_pct: profile.higher_edu_pct,
-          foreign_born_pct: profile.foreign_born_pct,
-          families_with_kids_pct: profile.families_with_kids_pct,
-          raw_data: { payload, item },
-        } satisfies DemographicRecord;
-      });
-
-    return rows.length > 0
-      ? rows
-      : [
-          {
-            deso_id: desoId,
-            year: parsedYear,
-            population_total: this.areaInt(desoId, "population-fallback", 9000, 72000),
-            ...this.buildDemographicProfile(
-              desoId,
-              this.areaInt(desoId, "population-fallback", 9000, 72000),
-            ),
-            raw_data: { fallback: true },
-          },
-        ];
   }
 
   private async discoverStockholmCountyMunicipalities(): Promise<StockholmMunicipalitySeed[]> {
@@ -2227,7 +1936,6 @@ export class IngestionEngine {
           });
           desoAreasUpserted += 1;
 
-          const anchor = this.areaAnchor(seed.deso_id);
           await pool.query(
             `INSERT INTO districts (
                id,
@@ -2255,12 +1963,12 @@ export class IngestionEngine {
                  WHEN $5::text IS NULL THEN NULL
                  ELSE ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326))
                END,
-               COALESCE(
-                 ST_PointOnSurface(ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326))),
-                 ST_SetSRID(ST_MakePoint($6, $7), 4326)
-               ),
-               $8,
-               $9::jsonb
+               CASE
+                 WHEN $5::text IS NULL THEN NULL
+                 ELSE ST_PointOnSurface(ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($5), 4326)))
+               END,
+               $6,
+               $7::jsonb
              )
              ON CONFLICT (id) DO UPDATE SET
                deso_id = EXCLUDED.deso_id,
@@ -2279,8 +1987,6 @@ export class IngestionEngine {
               municipalityRef.id,
               seed.district_name,
               geometryGeoJson,
-              anchor.lng,
-              anchor.lat,
               `Compatibility district backed by official DeSO ${seed.deso_id}`,
               JSON.stringify({
                 source: "ingestion.stockholm_county_deso_compat",
@@ -2427,7 +2133,8 @@ export class IngestionEngine {
          performance,
          student_count,
          source_links,
-         raw_data
+         raw_data,
+         quality
        )
        SELECT
          $1,
@@ -2447,7 +2154,8 @@ export class IngestionEngine {
              'deso_id', $2,
              'district_id', $1
            )
-         )
+         ),
+         quality
        FROM schools
        WHERE deso_id = $2`,
       [districtId, desoId],
@@ -2463,7 +2171,8 @@ export class IngestionEngine {
          confidence,
          status,
          source_links,
-         raw_data
+         raw_data,
+         quality
        )
        SELECT
          $1,
@@ -2480,7 +2189,8 @@ export class IngestionEngine {
              'deso_id', $2,
              'district_id', $1
            )
-         )
+         ),
+         quality
        FROM future_projects
        WHERE deso_id = $2`,
       [districtId, desoId],
@@ -2497,7 +2207,8 @@ export class IngestionEngine {
          foreign_born_pct,
          families_with_kids_pct,
          source_links,
-         raw_data
+         raw_data,
+         quality
        )
        SELECT
          $1,
@@ -2516,7 +2227,8 @@ export class IngestionEngine {
              'deso_id', $2,
              'district_id', $1
            )
-         )
+         ),
+         quality
        FROM demographics
        WHERE deso_id = $2
        ON CONFLICT (district_id, year) DO UPDATE SET
@@ -2527,7 +2239,8 @@ export class IngestionEngine {
          foreign_born_pct = EXCLUDED.foreign_born_pct,
          families_with_kids_pct = EXCLUDED.families_with_kids_pct,
          source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data`,
+         raw_data = EXCLUDED.raw_data,
+         quality = EXCLUDED.quality`,
       [districtId, desoId],
     );
 
@@ -2540,7 +2253,8 @@ export class IngestionEngine {
          incident_count,
          trend,
          source_links,
-         raw_data
+         raw_data,
+         quality
        )
        SELECT
          $1,
@@ -2556,7 +2270,8 @@ export class IngestionEngine {
              'deso_id', $2,
              'district_id', $1
            )
-         )
+         ),
+         quality
        FROM crime_stats
        WHERE deso_id = $2`,
       [districtId, desoId],
@@ -2573,6 +2288,10 @@ export class IngestionEngine {
          safety_score,
          green_areas_score,
          future_growth_score,
+         data_coverage,
+         components_available,
+         components_missing,
+         scoring_version,
          calculated_at,
          raw_data
        )
@@ -2586,6 +2305,10 @@ export class IngestionEngine {
          safety_score,
          green_areas_score,
          future_growth_score,
+         data_coverage,
+         components_available,
+         components_missing,
+         scoring_version,
          NOW(),
          COALESCE(raw_data, '{}'::jsonb) || jsonb_build_object(
            'compatibility_copy',
@@ -2606,6 +2329,10 @@ export class IngestionEngine {
          safety_score = EXCLUDED.safety_score,
          green_areas_score = EXCLUDED.green_areas_score,
          future_growth_score = EXCLUDED.future_growth_score,
+         data_coverage = EXCLUDED.data_coverage,
+         components_available = EXCLUDED.components_available,
+         components_missing = EXCLUDED.components_missing,
+         scoring_version = EXCLUDED.scoring_version,
          calculated_at = NOW(),
          raw_data = EXCLUDED.raw_data`,
       [districtId, desoId],
@@ -2680,8 +2407,7 @@ export class IngestionEngine {
           `items=${start + 1}-${start + batch.length} of ${items.length}`,
         );
         const enrichedBatch = await Promise.all(
-          batch.map(async (item, batchIndex) => {
-            const index = start + batchIndex;
+          batch.map(async (item) => {
             const schoolUnitCode = String(item.schoolUnitCode ?? "").trim();
             if (!schoolUnitCode) {
               return null;
@@ -2724,7 +2450,6 @@ export class IngestionEngine {
             const coordinateSelection = this.selectSchoolCoordinates({
               explicitGeo: addressSelection.explicitGeo,
               geocodedGeo,
-              fallbackGeo: this.areaAnchor(`MUNI-${municipalityCode}`),
             });
             warnings.push(...coordinateSelection.warnings);
 
@@ -2772,14 +2497,9 @@ export class IngestionEngine {
               address: addressSelection.address,
               lat: coordinateSelection.lat,
               lng: coordinateSelection.lng,
-              performance: this.toNumber(
-                item.performance ?? item.rating,
-                this.areaInt(`MUNI-${municipalityCode}`, `school-perf:${index}`, 62, 96),
-              ),
-              students: this.toNumber(
-                item.students ?? item.studentCount,
-                this.areaInt(`MUNI-${municipalityCode}`, `school-students:${index}`, 180, 1500),
-              ),
+              // The school unit register carries no results or pupil counts (DR-33).
+              performance: toNumberOrNull(item.performance ?? item.rating),
+              students: toNumberOrNull(item.students ?? item.studentCount),
               source_links: this.dedupeSourceLinks([
                 { label: "Skolverket list", url: url.toString() },
                 { label: "Skolverket school detail", url: detailUrl },
@@ -2845,47 +2565,12 @@ export class IngestionEngine {
 
     const schools = await cachedPromise;
 
-    return schools.length > 0
-      ? schools.map((school) => ({
-          ...school,
-          ...(isDistrictMode
-            ? { district_id: desoIdOrDistrictId, deso_id: undefined }
-            : { deso_id: desoIdOrDistrictId, district_id: undefined }),
-        }))
-      : [
-          {
-            ...(isDistrictMode
-              ? { district_id: desoIdOrDistrictId }
-              : { deso_id: desoIdOrDistrictId }),
-            name: `Local School ${desoIdOrDistrictId}`,
-            lat: this.areaAnchor(desoIdOrDistrictId).lat,
-            lng: this.areaAnchor(desoIdOrDistrictId).lng,
-            performance: this.areaInt(desoIdOrDistrictId, "school-fallback-perf", 62, 96),
-            students: this.areaInt(desoIdOrDistrictId, "school-fallback-students", 180, 1500),
-            raw_data: {
-              fallback: true,
-              id: desoIdOrDistrictId,
-              isDistrictMode,
-              normalized: {
-                status: "fallback",
-                canonical_name: `Local School ${desoIdOrDistrictId}`,
-                canonical_name_source: "fallback",
-                canonical_address: null,
-                canonical_address_source: null,
-                coordinate_source: "area_anchor_fallback",
-                normalized_at: new Date().toISOString(),
-                warnings: [
-                  {
-                    code: "school_fetch_fallback",
-                    severity: "warn",
-                    message:
-                      "Fell back to a synthetic local school because no Skolverket school records could be normalized.",
-                  },
-                ],
-              },
-            },
-          },
-        ];
+    return schools.map((school) => ({
+      ...school,
+      ...(isDistrictMode
+        ? { district_id: desoIdOrDistrictId, deso_id: undefined }
+        : { deso_id: desoIdOrDistrictId, district_id: undefined }),
+    }));
   }
 
   private distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -2954,6 +2639,9 @@ export class IngestionEngine {
 
     const deduped = new Map<string, SchoolRecord & { _distance: number }>();
     for (const school of fetchedSchools) {
+      if (school.lat === null || school.lng === null) {
+        continue;
+      }
       const key =
         (this.toNonEmptyString(school.school_unit_code) ?? "").trim() ||
         `${school.name.toLowerCase()}|${String(school.address ?? "").toLowerCase()}`;
@@ -3409,10 +3097,8 @@ export class IngestionEngine {
           continue;
         }
 
-        let action:
-          | "none"
-          | "district_scoped_ingestion"
-          | "backfill_named_district_deso_map" = "none";
+        let action: "none" | "district_scoped_ingestion" | "backfill_named_district_deso_map" =
+          "none";
         let notes: string | undefined;
 
         if (legacyDistrictId) {
@@ -3483,13 +3169,17 @@ export class IngestionEngine {
       process.env.TRAFIKLAB_API_URL ?? "https://api.resrobot.se/v2.1/location.nearbystops";
     const apiKey = process.env.TRAFIKLAB_API_KEY;
     if (!apiKey) {
-      throw new Error("TRAFIKLAB_API_KEY is required for ResRobot v2.1");
+      throw new SourceSkipped("missing_api_key");
+    }
+
+    const centroid = await this.getDesoCentroid(desoId);
+    if (!centroid) {
+      throw new Error(`DeSO ${desoId} has no centroid; geometry has not been ingested`);
     }
 
     const url = new URL(endpoint);
-    const anchor = this.areaAnchor(desoId);
-    url.searchParams.set("originCoordLat", anchor.lat.toFixed(6));
-    url.searchParams.set("originCoordLong", anchor.lng.toFixed(6));
+    url.searchParams.set("originCoordLat", centroid.lat.toFixed(6));
+    url.searchParams.set("originCoordLong", centroid.lng.toFixed(6));
     url.searchParams.set("format", "json");
     url.searchParams.set("maxNo", "20");
     url.searchParams.set("r", "2000");
@@ -3501,298 +3191,54 @@ export class IngestionEngine {
       root?.stopLocationOrCoordLocation ?? root?.StopLocation ?? root?.stops ?? root?.items,
     );
 
-    const stops = locations
-      .map((item) => this.toRecord(item))
-      .filter((item): item is Record<string, unknown> => item !== null)
-      .map((item, index) => {
-        const stop = this.toRecord(item.StopLocation) ?? item;
-        const productAtStop = this.toArray(stop.productAtStop ?? stop.products);
-        return {
-          id: String(stop.extId ?? `${desoId}-STOP-${index + 1}`),
-          name: String(stop.name ?? `Stop ${index + 1}`),
-          type: String(stop.type ?? "TRANSIT"),
-          lat: this.toNumber(stop.lat, anchor.lat + index * 0.001),
-          lng: this.toNumber(stop.lon ?? stop.lng, anchor.lng + index * 0.001),
-          routes: this.toNumber(
-            stop.routeCount ?? stop.products,
-            productAtStop.length || this.areaInt(desoId, `routes:${index}`, 2, 10),
-          ),
-          source_links: this.staticSource("Trafiklab", url.toString()),
-          raw_data: { payload, item, stop },
-        } satisfies StopRecord;
+    const stops: StopRecord[] = [];
+    for (const item of locations) {
+      const record = this.toRecord(item);
+      if (!record) continue;
+      const stop = this.toRecord(record.StopLocation) ?? record;
+      const id = this.toNonEmptyString(stop.extId);
+      const lat = toNumberOrNull(stop.lat);
+      const lng = toNumberOrNull(stop.lon ?? stop.lng);
+      if (!id || lat === null || lng === null) continue;
+
+      const productAtStop = this.toArray(stop.productAtStop ?? stop.products);
+      stops.push({
+        id,
+        name: String(stop.name ?? id),
+        type: String(stop.type ?? "TRANSIT"),
+        lat,
+        lng,
+        routes: toNumberOrNull(stop.routeCount) ?? (productAtStop.length || null),
+        source_links: this.staticSource("Trafiklab", endpoint),
+        raw_data: { payload, item: record, stop },
       });
-
-    return stops.length > 0
-      ? stops
-      : [
-          {
-            id: `${desoId}-STOP-1`,
-            name: `Transit Hub ${desoId}`,
-            type: "TRAIN",
-            lat: anchor.lat,
-            lng: anchor.lng,
-            routes: this.areaInt(desoId, "routes-fallback", 2, 10),
-            raw_data: { fallback: true },
-          },
-        ];
+    }
+    return stops;
   }
 
-  private async fetchLantmaterietProperties(desoId: string): Promise<PropertyRecord[]> {
-    const endpoint =
-      process.env.LANTMATERIET_API_URL ?? "https://api.lantmateriet.se/belagenhetsadress/atom/v1.2";
-    const apiKey = process.env.LANTMATERIET_API_KEY;
-    const url = new URL(endpoint);
-
-    const customQuery = process.env.LANTMATERIET_QUERY;
-    if (customQuery && !url.searchParams.has("q")) {
-      url.searchParams.set("q", customQuery);
-    }
-
-    const headers: Record<string, string> = {
-      Accept: "application/atom+xml, application/xml, application/json;q=0.9, */*;q=0.8",
-    };
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
-      headers["x-api-key"] = apiKey;
-      headers["X-API-KEY"] = apiKey;
-      headers.apikey = apiKey;
-      headers["Ocp-Apim-Subscription-Key"] = apiKey;
-    }
-
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Lantmateriet request failed: ${response.status}`);
-    }
-
-    const raw = await response.text();
-    let properties: PropertyRecord[] = [];
-
-    if (raw.trim().startsWith("<")) {
-      properties = this.parseLantmaterietAtom(raw, desoId);
-      // Add raw_data to parsed properties
-      properties = properties.map((p, idx) => ({
-        ...p,
-        raw_data: { source: "atom", raw, index: idx },
-      }));
-    } else {
-      const payload = JSON.parse(raw) as unknown;
-      const root = this.toRecord(payload);
-      const items = this.toArray(root?.addresses ?? root?.features ?? root?.results ?? root?.items);
-
-      properties = items
-        .map((item) => this.toRecord(item))
-        .filter((item): item is Record<string, unknown> => item !== null)
-        .map((item, index) => {
-          const geometry = this.toRecord(item.geometry);
-          const coords = this.toArray(geometry?.coordinates);
-          const anchor = this.areaAnchor(desoId);
-          const lng = this.toNumber(coords[0], anchor.lng + index * 0.001);
-          const lat = this.toNumber(coords[1], anchor.lat + index * 0.001);
-          const normalized = this.normalizeCoordinatePair(lat, lng, anchor, index);
-
-          return {
-            property_id: String(item.property_id ?? item.id ?? `PROP-${desoId}-${index + 1}`),
-            address: String(item.address ?? item.label ?? `Address ${index + 1}, ${desoId}`),
-            lat: normalized.lat,
-            lng: normalized.lng,
-            building_year: this.toNumber(
-              item.building_year ?? item.yearBuilt,
-              this.areaInt(desoId, `building-json:${index}`, 1965, 2023),
-            ),
-            source_links: this.staticSource("Lantmäteriet", url.toString()),
-            raw_data: { payload, item, url: url.toString() },
-          } satisfies PropertyRecord;
-        });
-    }
-
-    return properties.length > 0
-      ? properties
-      : [
-          {
-            property_id: `PROP-${desoId}-001`,
-            address: `Main Street 10, ${desoId}`,
-            lat: this.areaAnchor(desoId).lat,
-            lng: this.areaAnchor(desoId).lng,
-            building_year: this.areaInt(desoId, "building-fallback:1", 1965, 2023),
-            raw_data: { fallback: true },
-          },
-          {
-            property_id: `PROP-${desoId}-002`,
-            address: `Secondary Street 30, ${desoId}`,
-            lat: this.areaAnchor(desoId).lat + 0.0015,
-            lng: this.areaAnchor(desoId).lng - 0.0015,
-            building_year: this.areaInt(desoId, "building-fallback:2", 1965, 2023),
-            raw_data: { fallback: true },
-          },
-        ];
-  }
-
-  private async fetchSmhiObservation(desoId: string, year: number): Promise<SmhiRecord> {
-    const endpoint =
-      process.env.SMHI_API_URL ??
-      "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station-set/all/period/latest-hour/data.json";
-
-    const payload = await this.fetchJson(endpoint, { method: "GET" }, "SMHI");
-    const root = this.toRecord(payload);
-
-    const directValue = this.toArray(root?.value)[0];
-    const directValueRecord = this.toRecord(directValue);
-    const directTemp = this.toNumber(directValueRecord?.value, Number.NaN);
-
-    const stations = this.toArray(root?.station)
-      .map((item) => this.toRecord(item))
-      .filter((item): item is Record<string, unknown> => item !== null);
-
-    const stationReadings = stations
-      .map((station) => {
-        const first = this.toRecord(this.toArray(station.value)[0]);
-        return {
-          stationKey: String(station.key ?? station.id ?? ""),
-          stationName: String(station.name ?? ""),
-          value: this.toNumber(first?.value, Number.NaN),
-        };
-      })
-      .filter((reading) => Number.isFinite(reading.value));
-
-    const avgStationTemp =
-      stationReadings.length > 0
-        ? stationReadings.reduce((sum, reading) => sum + reading.value, 0) / stationReadings.length
-        : Number.NaN;
-
-    const sourceStation =
-      stationReadings.length > 0
-        ? `${stationReadings[0].stationKey}:${stationReadings[0].stationName}`
-        : String(root?.station ?? "SMHI-STHLM-01");
-
-    const temp = Number.isFinite(directTemp)
-      ? directTemp
-      : Number.isFinite(avgStationTemp)
-        ? avgStationTemp
-        : 8.6;
-
-    const fallback = this.fallbackSmhiObservation(desoId, year);
-
-    return {
-      deso_id: desoId,
-      year,
-      source_station: sourceStation,
-      flood_risk: Number((fallback.flood_risk + Math.max(0, (temp - 7) * 0.45)).toFixed(2)),
-      green_space_ratio: fallback.green_space_ratio,
-      air_quality_index: Number(
-        (fallback.air_quality_index + Math.max(0, (temp - 8) * 0.25)).toFixed(2),
-      ),
-      temperature_avg: temp,
-      rainfall_mm: fallback.rainfall_mm,
-      wind_exposure_index: fallback.wind_exposure_index,
-      raw_data: { payload },
-    };
-  }
-
-  private async fetchMunicipalProjects(desoId: string): Promise<MunicipalProjectRecord[]> {
-    const datasetEndpoint = process.env.MUNICIPAL_PROJECTS_FEED_URL;
-    const endpoint =
-      process.env.MUNICIPAL_OPEN_DATA_API_URL ??
-      "https://dataportalen.stockholm.se/dataportalen/srv/swe/csw?service=CSW&version=2.0.2&request=GetRecords&typeNames=csw:Record&elementSetName=full&resultType=results&maxRecords=25&constraintLanguage=CQL_TEXT&constraint_language_version=1.1.0&constraint=AnyText%20like%20'%25projekt%25'";
-
-    let projects: MunicipalProjectRecord[] = [];
-
-    const parseJsonProjects = (raw: string, sourceUrl?: string): MunicipalProjectRecord[] => {
-      const payload = JSON.parse(raw) as unknown;
-      const root = this.toRecord(payload);
-      const items = this.toArray(root?.items ?? root?.results ?? root?.data);
-
-      return items
-        .map((item) => this.toRecord(item))
-        .filter((item): item is Record<string, unknown> => item !== null)
-        .map(
-          (item, index) =>
-            ({
-              external_id: String(item.id ?? item.external_id ?? `MUNI-${desoId}-P${index + 1}`),
-              title: String(item.title ?? `Municipal project ${index + 1}`),
-              project_type: String(item.project_type ?? item.type ?? "infrastructure"),
-              lat: this.toNumber(
-                item.lat ?? item.latitude,
-                this.areaAnchor(desoId).lat + index * 0.001,
-              ),
-              lng: this.toNumber(
-                item.lng ?? item.longitude,
-                this.areaAnchor(desoId).lng + index * 0.001,
-              ),
-              status: String(item.status ?? "planned"),
-              confidence: this.toNumber(
-                item.confidence,
-                Number(this.areaFactor(desoId, `municipal-confidence:${index}`, 58, 93).toFixed(1)),
-              ),
-              source_municipality: String(
-                item.source_municipality ?? item.municipality ?? "Stockholm",
-              ),
-              raw_data: { payload, item, sourceUrl },
-            }) satisfies MunicipalProjectRecord,
+  private loadDesoPopulation(): Promise<DesoPopulationResult> {
+    if (!this.desoPopulationPromise) {
+      this.desoPopulationPromise = (async () => {
+        const idsRes = await pool.query(`SELECT id FROM deso_areas`);
+        const ids = idsRes.rows.map((row: { id: unknown }) => String(row.id));
+        return fetchDesoPopulation(
+          (url, init, label, timeoutMs) => this.fetchJson(url, init, label, timeoutMs),
+          ids,
+          { endpoint: process.env.SCB_DESO_POPULATION_URL },
         );
-    };
-
-    if (datasetEndpoint) {
-      try {
-        const datasetResponse = await fetch(datasetEndpoint, { method: "GET" });
-        if (datasetResponse.ok) {
-          const datasetRaw = await datasetResponse.text();
-          if (datasetRaw.trim().startsWith("{") || datasetRaw.trim().startsWith("[")) {
-            projects = parseJsonProjects(datasetRaw, datasetEndpoint);
-          }
-        }
-      } catch (_error) {
-        // Intentionally ignore dataset feed failures and fall back to catalog discovery.
-      }
+      })().catch((error) => {
+        this.desoPopulationPromise = null;
+        throw error;
+      });
     }
-
-    if (projects.length === 0) {
-      const response = await fetch(endpoint, { method: "GET" });
-      if (!response.ok) {
-        throw new Error(`Municipal Open Data request failed: ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      const raw = await response.text();
-
-      if (contentType.includes("application/json") || raw.trim().startsWith("{")) {
-        projects = parseJsonProjects(raw, endpoint);
-      } else if (raw.includes("<csw:GetRecordsResponse") || raw.includes("<csw:Record")) {
-        projects = this.parseMunicipalCsw(raw, desoId);
-      }
-    }
-
-    return projects.length > 0
-      ? projects
-      : [
-          {
-            external_id: `MUNI-${desoId}-P001`,
-            title: "Kista Green Mobility Corridor",
-            project_type: "infrastructure",
-            lat: 59.406,
-            lng: 17.944,
-            status: "planned",
-            confidence: 82.5,
-            source_municipality: "Stockholm",
-            raw_data: { fallback: true },
-          },
-          {
-            external_id: `MUNI-${desoId}-P002`,
-            title: "Family Recreation Park Upgrade",
-            project_type: "public-space",
-            lat: 59.4018,
-            lng: 17.9498,
-            status: "approved",
-            confidence: 76.3,
-            source_municipality: "Stockholm",
-            raw_data: { fallback: true },
-          },
-        ];
+    return this.desoPopulationPromise;
   }
 
+  /**
+   * Stores SCB population for one DeSO. Only population and its growth between the two
+   * latest published years are available at this level; income, education and the other
+   * fields stay NULL until a real source is wired in (DR-32).
+   */
   async ingestSCB(desoId: string, region = "Stockholm") {
     if (!this.regions.includes(region)) {
       throw new Error(`Unsupported region: ${region}`);
@@ -3800,125 +3246,63 @@ export class IngestionEngine {
 
     await this.ensureDesoArea(desoId, { region });
 
-    let demographicRecords: DemographicRecord[];
-    try {
-      demographicRecords = await this.fetchScbDemographics(desoId, region);
-    } catch (_error) {
-      const population = this.areaInt(desoId, "population-catch", 9000, 72000);
-      demographicRecords = [
-        {
-          deso_id: desoId,
-          year: 2024,
-          population_total: population,
-          ...this.buildDemographicProfile(desoId, population),
-          source_links: this.staticSource("SCB", "https://www.scb.se/"),
-          raw_data: { fallback: true, region, deso_id: desoId },
-        },
-      ];
+    const population = await this.loadDesoPopulation();
+    const entry = population.byDeso.get(desoId);
+    if (!entry || entry.population === null) {
+      return {
+        status: "failed",
+        count: 0,
+        source: "scb",
+        reason: `no SCB population for ${desoId}`,
+      };
     }
-
-    for (const demo of demographicRecords) {
-      await pool.query(
-        `INSERT INTO demographics (deso_id, year, population_total, population_growth, 
-         median_income, higher_edu_pct, foreign_born_pct, families_with_kids_pct, source_links, raw_data)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
-         ON CONFLICT (deso_id, year) DO UPDATE SET
-           population_total = EXCLUDED.population_total,
-           population_growth = EXCLUDED.population_growth,
-           median_income = EXCLUDED.median_income,
-           source_links = EXCLUDED.source_links,
-           raw_data = EXCLUDED.raw_data`,
-        [
-          demo.deso_id,
-          demo.year,
-          demo.population_total,
-          demo.population_growth,
-          demo.median_income,
-          demo.higher_edu_pct,
-          demo.foreign_born_pct,
-          demo.families_with_kids_pct,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              demo.source_links ?? this.staticSource("SCB", "https://www.scb.se/"),
-            ),
-          ),
-          JSON.stringify(demo.raw_data ?? null),
-        ],
-      );
-    }
-
-    return { status: "ok", count: demographicRecords.length, source: "scb" };
-  }
-
-  async ingestCrime(desoId: string, year = 2024) {
-    await this.ensureDesoArea(desoId);
-
-    const mockCrime = {
-      deso_id: desoId,
-      year,
-      crime_type: "total",
-      incident_count: this.areaInt(desoId, "crime-count", 160, 640),
-      trend: this.areaTrend(desoId),
-      source_links: this.staticSource("Brå", "https://bra.se/"),
-      raw_data: { generated: true },
-    };
 
     await pool.query(
-      `INSERT INTO crime_stats (deso_id, year, crime_type, incident_count, trend, source_links, raw_data)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
-       ON CONFLICT (deso_id, year, crime_type) DO UPDATE SET
-         incident_count = EXCLUDED.incident_count,
-         trend = EXCLUDED.trend,
+      `INSERT INTO demographics (deso_id, year, population_total, population_growth, source_links, raw_data, quality, fetched_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, 'measured', NOW())
+       ON CONFLICT (deso_id, year) DO UPDATE SET
+         population_total = EXCLUDED.population_total,
+         population_growth = EXCLUDED.population_growth,
          source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data`,
+         raw_data = EXCLUDED.raw_data,
+         quality = EXCLUDED.quality,
+         fetched_at = EXCLUDED.fetched_at`,
       [
-        mockCrime.deso_id,
-        mockCrime.year,
-        mockCrime.crime_type,
-        mockCrime.incident_count,
-        mockCrime.trend,
-        JSON.stringify(mockCrime.source_links),
-        JSON.stringify(mockCrime.raw_data ?? null),
+        desoId,
+        population.year,
+        entry.population,
+        growthPercent(entry.population, entry.previous),
+        JSON.stringify(this.staticSource("SCB FolkmDesoAldKon", population.sourceUrl)),
+        JSON.stringify({
+          source: "scb_pxweb",
+          table: "BE/BE0101/BE0101Y/FolkmDesoAldKon",
+          year: population.year,
+          previous_year: population.previousYear,
+          previous_population: entry.previous,
+        }),
       ],
     );
 
-    return { status: "ok" };
+    return { status: "ok", count: 1, source: "scb" };
+  }
+
+  /**
+   * Disabled (DR-03). Area-level crime counts are not published as open data; the previous
+   * implementation generated a number and labelled it "Brå". Safety stays unscored.
+   */
+  async ingestCrime(_desoId: string, _year = 2024) {
+    return { status: "skipped", count: 0, source: "bra", reason: "no_area_level_source" };
   }
 
   async ingestTransport(desoId: string) {
     let stops: StopRecord[];
     try {
       stops = await this.fetchTrafiklabStops(desoId);
-    } catch (_error) {
-      const anchor = this.areaAnchor(desoId);
-      stops = [
-        {
-          id: `${desoId}-STOP-1`,
-          name: `Transit Hub ${desoId}`,
-          type: "TRAIN",
-          lat: anchor.lat,
-          lng: anchor.lng,
-          routes: this.areaInt(desoId, "transport-catch:1", 2, 10),
-          source_links: this.staticSource(
-            "Trafiklab",
-            process.env.TRAFIKLAB_API_URL ?? "https://api.resrobot.se/v2.1/location.nearbystops",
-          ),
-          raw_data: { fallback: true, deso_id: desoId, ordinal: 1 },
-        },
-        {
-          id: `${desoId}-STOP-2`,
-          name: `Transit Hub ${desoId} B`,
-          type: "BUS",
-          lat: anchor.lat + 0.0015,
-          lng: anchor.lng - 0.0015,
-          routes: this.areaInt(desoId, "transport-catch:2", 1, 8),
-          source_links: this.staticSource(
-            "Trafiklab",
-            process.env.TRAFIKLAB_API_URL ?? "https://api.resrobot.se/v2.1/location.nearbystops",
-          ),
-          raw_data: { fallback: true, deso_id: desoId, ordinal: 2 },
-        },
-      ];
+    } catch (error) {
+      if (error instanceof SourceSkipped) {
+        return { status: "skipped", count: 0, source: "trafiklab", reason: error.reason };
+      }
+      throw error;
     }
 
     for (const stop of stops) {
@@ -3928,7 +3312,9 @@ export class IngestionEngine {
          ON CONFLICT (id) DO UPDATE SET
            route_count = EXCLUDED.route_count,
            source_links = EXCLUDED.source_links,
-           raw_data = EXCLUDED.raw_data`,
+           raw_data = EXCLUDED.raw_data,
+           quality = 'measured',
+           fetched_at = NOW()`,
         [
           stop.id,
           stop.name,
@@ -3957,24 +3343,8 @@ export class IngestionEngine {
   async ingestSchools(desoId: string) {
     await this.ensureDesoArea(desoId);
 
-    let schools: SchoolRecord[];
-    try {
-      schools = await this.fetchSkolverketSchools(desoId);
-    } catch (_error) {
-      const anchor = this.areaAnchor(desoId);
-      schools = [
-        {
-          deso_id: desoId,
-          name: `Local School ${desoId}`,
-          lat: anchor.lat,
-          lng: anchor.lng,
-          performance: this.areaInt(desoId, "school-catch-perf", 62, 96),
-          students: this.areaInt(desoId, "school-catch-students", 180, 1500),
-          source_links: this.staticSource("Skolverket", "https://www.skolverket.se/"),
-          raw_data: { fallback: true },
-        },
-      ];
-    }
+    const municipalitySchools = await this.fetchSkolverketSchools(desoId);
+    const schools = await this.filterSchoolsInsideDeso(desoId, municipalitySchools);
 
     for (const school of schools) {
       await this.upsertSchoolRecord(school);
@@ -3983,373 +3353,68 @@ export class IngestionEngine {
     return { status: "ok", count: schools.length, source: "skolverket" };
   }
 
-  async ingestLantmateriet(desoId: string) {
-    await this.ensureDesoArea(desoId);
+  /** Keeps only schools whose coordinates fall inside the DeSO polygon (DR-42). */
+  private async filterSchoolsInsideDeso(
+    desoId: string,
+    schools: SchoolRecord[],
+  ): Promise<SchoolRecord[]> {
+    const located = schools.filter((school) => school.lat !== null && school.lng !== null) as Array<
+      SchoolRecord & { lat: number; lng: number }
+    >;
+    if (located.length === 0) return [];
 
-    let properties: PropertyRecord[];
-    try {
-      properties = await this.fetchLantmaterietProperties(desoId);
-    } catch (_error) {
-      const anchor = this.areaAnchor(desoId);
-      properties = [
-        {
-          property_id: `PROP-${desoId}-001`,
-          address: `Main Street 10, ${desoId}`,
-          lat: anchor.lat,
-          lng: anchor.lng,
-          building_year: this.areaInt(desoId, "property-catch:1", 1965, 2023),
-          source_links: this.staticSource(
-            "Lantmäteriet",
-            process.env.LANTMATERIET_API_URL ??
-              "https://api.lantmateriet.se/belagenhetsadress/atom/v1.2",
-          ),
-          raw_data: { fallback: true, deso_id: desoId, ordinal: 1 },
-        },
-        {
-          property_id: `PROP-${desoId}-002`,
-          address: `Secondary Street 30, ${desoId}`,
-          lat: anchor.lat + 0.0015,
-          lng: anchor.lng - 0.0015,
-          building_year: this.areaInt(desoId, "property-catch:2", 1965, 2023),
-          source_links: this.staticSource(
-            "Lantmäteriet",
-            process.env.LANTMATERIET_API_URL ??
-              "https://api.lantmateriet.se/belagenhetsadress/atom/v1.2",
-          ),
-          raw_data: { fallback: true, deso_id: desoId, ordinal: 2 },
-        },
-      ];
-    }
-
-    for (const property of properties) {
-      await pool.query(
-        `INSERT INTO addresses (deso_id, address_string, coordinates, property_id, building_year, source_links, raw_data)
-         VALUES ($1, $2, ST_Point($3, $4), $5, $6, $7::jsonb, $8::jsonb)
-         ON CONFLICT (deso_id, address_string) DO UPDATE SET
-           coordinates = EXCLUDED.coordinates,
-           property_id = EXCLUDED.property_id,
-           building_year = EXCLUDED.building_year,
-           source_links = EXCLUDED.source_links,
-           raw_data = EXCLUDED.raw_data`,
-        [
-          desoId,
-          property.address,
-          property.lng,
-          property.lat,
-          property.property_id,
-          property.building_year,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              property.source_links ??
-                this.staticSource(
-                  "Lantmäteriet",
-                  process.env.LANTMATERIET_API_URL ??
-                    "https://api.lantmateriet.se/belagenhetsadress/atom/v1.2",
-                ),
-            ),
-          ),
-          JSON.stringify(property.raw_data ?? null),
-        ],
-      );
-
-      await pool.query(
-        `INSERT INTO lantmateriet_properties (property_id, deso_id, address_string, coordinates, building_year, source_links, raw_data)
-         VALUES ($1, $2, $3, ST_Point($4, $5), $6, $7::jsonb, $8::jsonb)
-         ON CONFLICT (property_id) DO UPDATE SET
-           address_string = EXCLUDED.address_string,
-           coordinates = EXCLUDED.coordinates,
-           building_year = EXCLUDED.building_year,
-           source_links = EXCLUDED.source_links,
-           raw_data = EXCLUDED.raw_data,
-           updated_at = NOW()`,
-        [
-          property.property_id,
-          desoId,
-          property.address,
-          property.lng,
-          property.lat,
-          property.building_year,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              property.source_links ??
-                this.staticSource(
-                  "Lantmäteriet",
-                  process.env.LANTMATERIET_API_URL ??
-                    "https://api.lantmateriet.se/belagenhetsadress/atom/v1.2",
-                ),
-            ),
-          ),
-          JSON.stringify(property.raw_data ?? null),
-        ],
-      );
-    }
-
-    return { status: "ok", count: properties.length, source: "lantmateriet" };
-  }
-
-  async ingestSMHI(desoId: string, year = 2024) {
-    await this.ensureDesoArea(desoId);
-
-    let observation: SmhiRecord;
-    try {
-      observation = await this.fetchSmhiObservation(desoId, year);
-    } catch (_error) {
-      observation = {
-        ...this.fallbackSmhiObservation(desoId, year),
-        raw_data: { fallback: true, deso_id: desoId, year },
-      };
-    }
-
-    await pool.query(
-      `INSERT INTO environmental_data (deso_id, year, flood_risk, green_space_ratio, air_quality_index, temperature_avg, source_links, raw_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
-       ON CONFLICT (deso_id, year) DO UPDATE SET
-         flood_risk = EXCLUDED.flood_risk,
-         green_space_ratio = EXCLUDED.green_space_ratio,
-         air_quality_index = EXCLUDED.air_quality_index,
-         temperature_avg = EXCLUDED.temperature_avg,
-         source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data`,
-      [
-        observation.deso_id,
-        observation.year,
-        observation.flood_risk,
-        observation.green_space_ratio,
-        observation.air_quality_index,
-        observation.temperature_avg,
-        JSON.stringify(
-          this.dedupeSourceLinks(
-            observation.source_links ?? this.staticSource("SMHI", "https://www.smhi.se/data"),
-          ),
-        ),
-        JSON.stringify(observation.raw_data ?? null),
-      ],
+    const res = await pool.query(
+      `SELECT p.idx::int AS idx
+       FROM unnest($1::float8[], $2::float8[]) WITH ORDINALITY AS p(lng, lat, idx)
+       JOIN deso_areas d
+         ON d.id = $3
+        AND d.geometry IS NOT NULL
+        AND ST_Intersects(d.geometry, ST_SetSRID(ST_Point(p.lng, p.lat), 4326))`,
+      [located.map((s) => s.lng), located.map((s) => s.lat), desoId],
     );
-
-    await pool.query(
-      `INSERT INTO smhi_observations (
-         deso_id, year, source_station, flood_risk, green_space_ratio, air_quality_index,
-         temperature_avg, rainfall_mm, wind_exposure_index, source_links, raw_data
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb)
-       ON CONFLICT (deso_id, year, source_station) DO UPDATE SET
-         flood_risk = EXCLUDED.flood_risk,
-         green_space_ratio = EXCLUDED.green_space_ratio,
-         air_quality_index = EXCLUDED.air_quality_index,
-         temperature_avg = EXCLUDED.temperature_avg,
-         rainfall_mm = EXCLUDED.rainfall_mm,
-         wind_exposure_index = EXCLUDED.wind_exposure_index,
-         source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data,
-         updated_at = NOW()`,
-      [
-        observation.deso_id,
-        observation.year,
-        observation.source_station,
-        observation.flood_risk,
-        observation.green_space_ratio,
-        observation.air_quality_index,
-        observation.temperature_avg,
-        observation.rainfall_mm,
-        observation.wind_exposure_index,
-        JSON.stringify(
-          this.dedupeSourceLinks(
-            observation.source_links ?? this.staticSource("SMHI", "https://www.smhi.se/data"),
-          ),
-        ),
-        JSON.stringify(observation.raw_data ?? null),
-      ],
-    );
-
-    return { status: "ok", count: 1, source: "smhi" };
+    const inside = new Set(res.rows.map((row: { idx: number }) => row.idx - 1));
+    return located.filter((_school, index) => inside.has(index));
   }
 
-  async ingestMunicipalOpenData(desoId: string) {
-    await this.ensureDesoArea(desoId);
-
-    let projects: MunicipalProjectRecord[];
-    try {
-      projects = await this.fetchMunicipalProjects(desoId);
-    } catch (_error) {
-      projects = [
-        {
-          external_id: `MUNI-${desoId}-P001`,
-          title: "Kista Green Mobility Corridor",
-          project_type: "infrastructure",
-          lat: 59.406,
-          lng: 17.944,
-          status: "planned",
-          confidence: 82.5,
-          source_municipality: "Stockholm",
-          raw_data: { fallback: true },
-        },
-        {
-          external_id: `MUNI-${desoId}-P002`,
-          title: "Family Recreation Park Upgrade",
-          project_type: "public-space",
-          lat: 59.4018,
-          lng: 17.9498,
-          status: "approved",
-          confidence: 76.3,
-          source_municipality: "Stockholm",
-          raw_data: { fallback: true },
-        },
-      ];
-    }
-
-    for (const project of projects) {
-      await pool.query(
-        `INSERT INTO future_projects (deso_id, title, project_type, coordinates, confidence, status, source_links, raw_data)
-         VALUES ($1, $2, $3, ST_Point($4, $5), $6, $7, $8::jsonb, $9::jsonb)
-         ON CONFLICT (deso_id, title, project_type) DO UPDATE SET
-           coordinates = EXCLUDED.coordinates,
-           confidence = EXCLUDED.confidence,
-           status = EXCLUDED.status,
-           source_links = EXCLUDED.source_links,
-           raw_data = EXCLUDED.raw_data`,
-        [
-          desoId,
-          project.title,
-          project.project_type || "unknown",
-          project.lng,
-          project.lat,
-          project.confidence,
-          project.status,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              project.source_links ??
-                this.staticSource(
-                  "Municipal Open Data",
-                  process.env.MUNICIPAL_OPEN_DATA_API_URL ?? "https://dataportalen.stockholm.se/",
-                ),
-            ),
-          ),
-          JSON.stringify(project.raw_data ?? null),
-        ],
-      );
-
-      await pool.query(
-        `INSERT INTO municipal_projects (
-          external_id, deso_id, source_municipality, title, project_type, coordinates, status, confidence, source_links, raw_data
-        ) VALUES ($1, $2, $3, $4, $5, ST_Point($6, $7), $8, $9, $10::jsonb, $11::jsonb)
-        ON CONFLICT (external_id) DO UPDATE SET
-          title = EXCLUDED.title,
-          project_type = EXCLUDED.project_type,
-          coordinates = EXCLUDED.coordinates,
-          status = EXCLUDED.status,
-          confidence = EXCLUDED.confidence,
-          source_municipality = EXCLUDED.source_municipality,
-          source_links = EXCLUDED.source_links,
-          raw_data = EXCLUDED.raw_data,
-          updated_at = NOW()`,
-        [
-          project.external_id,
-          desoId,
-          project.source_municipality,
-          project.title,
-          project.project_type,
-          project.lng,
-          project.lat,
-          project.status,
-          project.confidence,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              project.source_links ??
-                this.staticSource(
-                  "Municipal Open Data",
-                  process.env.MUNICIPAL_OPEN_DATA_API_URL ?? "https://dataportalen.stockholm.se/",
-                ),
-            ),
-          ),
-          JSON.stringify(project.raw_data ?? null),
-        ],
-      );
-    }
-
-    return { status: "ok", count: projects.length, source: "municipal-open-data" };
+  /**
+   * Disabled (DR-30/DR-31). The previous implementation requested one unscoped feed and
+   * attached its addresses to whichever area was being processed, with generated building
+   * years. Housing stock stays unscored until an area-scoped building source exists.
+   */
+  async ingestLantmateriet(_desoId: string) {
+    return {
+      status: "skipped",
+      count: 0,
+      source: "lantmateriet",
+      reason: "no_area_scoped_source",
+    };
   }
 
-  async ingestMunicipalOpenDataForDistrict(districtId: string, municipalityName?: string) {
-    const compatibilityDesoId = await this.getCompatibilityDesoIdForDistrict(districtId);
-    if (compatibilityDesoId) {
-      await this.syncCompatibilityDistrictFromDeso(
-        districtId,
-        compatibilityDesoId,
-        new Date().getFullYear(),
-      );
-      const countRes = await pool.query(
-        `SELECT COUNT(*)::int AS count
-         FROM future_projects
-         WHERE district_id = $1`,
-        [districtId],
-      );
-      return {
-        status: "ok",
-        count: Number(countRes.rows[0]?.count ?? 0),
-        source: "deso-compat-future-projects",
-      };
-    }
+  /**
+   * Disabled (DR-06). The previous implementation stored one national latest-hour
+   * temperature reading as every area's annual average and generated flood, green space and
+   * air quality values. Environment stays unscored until area-level sources exist (DR-30).
+   */
+  async ingestSMHI(_desoId: string, _year = 2024) {
+    return { status: "skipped", count: 0, source: "smhi", reason: "no_area_level_source" };
+  }
 
-    let projects: MunicipalProjectRecord[];
-    try {
-      projects = await this.fetchMunicipalProjects(districtId);
-    } catch (_error) {
-      projects = [
-        {
-          external_id: `MUNI-${districtId}-P001`,
-          title: "District Mobility Improvement Program",
-          project_type: "infrastructure",
-          lat: this.areaAnchor(districtId).lat,
-          lng: this.areaAnchor(districtId).lng,
-          status: "planned",
-          confidence: 79.1,
-          source_municipality: municipalityName ?? "Stockholm",
-          raw_data: { fallback: true },
-        },
-      ];
-    }
+  async ingestMunicipalOpenData(_desoId: string) {
+    return {
+      status: "skipped",
+      count: 0,
+      source: "municipal-open-data",
+      reason: "no_project_source",
+    };
+  }
 
-    for (const project of projects) {
-      await pool.query(
-        `WITH updated AS (
-           UPDATE future_projects
-           SET
-             coordinates = ST_Point($4, $5),
-             confidence = $6,
-             status = $7,
-             source_links = $8::jsonb,
-             raw_data = $9::jsonb
-           WHERE district_id = $1
-             AND title = $2
-             AND project_type = $3
-           RETURNING id
-         )
-         INSERT INTO future_projects (district_id, title, project_type, coordinates, confidence, status, source_links, raw_data)
-         SELECT $1, $2, $3, ST_Point($4, $5), $6, $7, $8::jsonb, $9::jsonb
-         WHERE NOT EXISTS (SELECT 1 FROM updated)`,
-        [
-          districtId,
-          project.title,
-          project.project_type || "unknown",
-          project.lng,
-          project.lat,
-          project.confidence,
-          project.status,
-          JSON.stringify(
-            this.dedupeSourceLinks(
-              project.source_links ??
-                this.staticSource(
-                  "Municipal Open Data",
-                  process.env.MUNICIPAL_OPEN_DATA_API_URL ?? "https://dataportalen.stockholm.se/",
-                ),
-            ),
-          ),
-          JSON.stringify(project.raw_data ?? null),
-        ],
-      );
-    }
-
-    return { status: "ok", count: projects.length, source: "municipal-open-data-district" };
+  async ingestMunicipalOpenDataForDistrict(_districtId: string, _municipalityName?: string) {
+    return {
+      status: "skipped",
+      count: 0,
+      source: "municipal-open-data-district",
+      reason: "no_project_source",
+    };
   }
 
   async ingestSchoolsForDistrict(districtId: string, municipalityCode: string) {
@@ -4373,25 +3438,7 @@ export class IngestionEngine {
       };
     }
 
-    let schools: SchoolRecord[];
-    try {
-      schools = await this.fetchSkolverketSchools(districtId, municipalityCode, true);
-    } catch (_error) {
-      const anchor = this.areaAnchor(districtId);
-      schools = [
-        {
-          district_id: districtId,
-          name: `Local School ${districtId}`,
-          address: `${districtId} Address 1`,
-          lat: anchor.lat,
-          lng: anchor.lng,
-          performance: this.areaInt(districtId, "school-district-catch-perf", 62, 96),
-          students: this.areaInt(districtId, "school-district-catch-students", 180, 1500),
-          source_links: this.staticSource("Skolverket", "https://www.skolverket.se/"),
-          raw_data: { fallback: true },
-        },
-      ];
-    }
+    const schools = await this.fetchSkolverketSchools(districtId, municipalityCode, true);
 
     for (const school of schools) {
       await this.upsertSchoolRecord({ ...school, district_id: districtId, deso_id: undefined });
@@ -4400,13 +3447,88 @@ export class IngestionEngine {
     return { status: "ok", count: schools.length, source: "skolverket-district" };
   }
 
+  private static readonly SCORING_QUALITIES = "('measured', 'derived')";
+
+  private async persistScore(
+    kind: "deso" | "district",
+    id: string,
+    result: ScoreResult,
+    inputs: Record<string, unknown>,
+  ): Promise<void> {
+    const c = result.components;
+    const table = kind === "deso" ? "neighborhood_scores" : "district_scores";
+    const key = kind === "deso" ? "deso_id" : "district_id";
+    const environmentColumn = kind === "deso" ? "environment_score," : "";
+    const environmentParam = kind === "deso" ? "$10," : "";
+    const environmentUpdate =
+      kind === "deso" ? "environment_score = EXCLUDED.environment_score," : "";
+    const base = [
+      id,
+      result.overall,
+      c.demographics,
+      c.housing,
+      c.transport,
+      c.schools,
+      c.safety,
+      c.greenAreas,
+      c.futureGrowth,
+    ];
+    const params = kind === "deso" ? [...base, c.environment] : base;
+    const tail = params.length;
+
+    await pool.query(
+      `INSERT INTO ${table} (
+         ${key}, overall_score, demographics_score, housing_market_score, transport_score,
+         schools_score, safety_score, green_areas_score, future_growth_score,
+         ${environmentColumn}
+         data_coverage, components_available, components_missing, scoring_version,
+         calculated_at, raw_data
+       )
+       VALUES (
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,
+         ${environmentParam}
+         $${tail + 1}, $${tail + 2}::jsonb, $${tail + 3}::jsonb, $${tail + 4},
+         NOW(), $${tail + 5}::jsonb
+       )
+       ON CONFLICT (${key}) DO UPDATE SET
+         overall_score = EXCLUDED.overall_score,
+         demographics_score = EXCLUDED.demographics_score,
+         housing_market_score = EXCLUDED.housing_market_score,
+         transport_score = EXCLUDED.transport_score,
+         schools_score = EXCLUDED.schools_score,
+         safety_score = EXCLUDED.safety_score,
+         green_areas_score = EXCLUDED.green_areas_score,
+         future_growth_score = EXCLUDED.future_growth_score,
+         ${environmentUpdate}
+         data_coverage = EXCLUDED.data_coverage,
+         components_available = EXCLUDED.components_available,
+         components_missing = EXCLUDED.components_missing,
+         scoring_version = EXCLUDED.scoring_version,
+         calculated_at = NOW(),
+         raw_data = EXCLUDED.raw_data`,
+      [
+        ...params,
+        result.coverage,
+        JSON.stringify(result.available),
+        JSON.stringify(result.missing),
+        result.version,
+        JSON.stringify({ inputs, scoring: result }),
+      ],
+    );
+  }
+
+  /**
+   * Scores one DeSO from stored rows with quality 'measured' or 'derived'. Missing inputs
+   * leave the component null; nothing is defaulted (DR-10..DR-14).
+   */
   async calculateNeighborhoodScore(desoId: string, year = 2024) {
     await this.ensureDesoArea(desoId);
+    const q = IngestionEngine.SCORING_QUALITIES;
 
     const demographicsRes = await pool.query(
       `SELECT median_income, higher_edu_pct, families_with_kids_pct, population_growth
        FROM demographics
-       WHERE deso_id = $1
+       WHERE deso_id = $1 AND quality IN ${q}
        ORDER BY year DESC
        LIMIT 1`,
       [desoId],
@@ -4422,7 +3544,7 @@ export class IngestionEngine {
          )
            performance
          FROM schools
-         WHERE deso_id = $1
+         WHERE deso_id = $1 AND quality IN ${q}
          ORDER BY
            COALESCE(NULLIF(school_unit_code, ''), LOWER(name) || '|' || LOWER(COALESCE(address, ''))),
            COALESCE(performance, 0) DESC,
@@ -4435,7 +3557,7 @@ export class IngestionEngine {
     const crimeRes = await pool.query(
       `SELECT incident_count, trend
        FROM crime_stats
-       WHERE deso_id = $1
+       WHERE deso_id = $1 AND quality IN ${q}
        ORDER BY year DESC
        LIMIT 1`,
       [desoId],
@@ -4444,30 +3566,34 @@ export class IngestionEngine {
     const environmentalRes = await pool.query(
       `SELECT green_space_ratio, flood_risk, air_quality_index, temperature_avg
        FROM environmental_data
-       WHERE deso_id = $1
+       WHERE deso_id = $1 AND quality IN ${q}
        ORDER BY year DESC
        LIMIT 1`,
       [desoId],
     );
 
     const housingRes = await pool.query(
-      `SELECT COUNT(*) AS address_count, AVG(building_year) AS avg_building_year
+      `SELECT COUNT(building_year) AS address_count, AVG(building_year) AS avg_building_year
        FROM addresses
-       WHERE deso_id = $1`,
+       WHERE deso_id = $1 AND quality IN ${q}`,
       [desoId],
     );
 
     const transportRes = await pool.query(
-      `SELECT COUNT(*) AS stop_count, AVG(route_count) AS avg_routes
-       FROM transport_stops
-       WHERE id LIKE $1`,
-      [`${desoId}-%`],
+      `SELECT COUNT(*) AS stop_count, AVG(t.route_count) AS avg_routes
+       FROM transport_stops t
+       JOIN deso_areas d
+         ON d.id = $1
+        AND d.geometry IS NOT NULL
+        AND ST_Intersects(d.geometry, t.coordinates)
+       WHERE t.quality IN ${q}`,
+      [desoId],
     );
 
     const growthRes = await pool.query(
       `SELECT COUNT(*) AS project_count, AVG(confidence) AS avg_confidence
        FROM future_projects
-       WHERE deso_id = $1`,
+       WHERE deso_id = $1 AND quality IN ${q}`,
       [desoId],
     );
 
@@ -4478,150 +3604,58 @@ export class IngestionEngine {
     const housing = housingRes.rows[0] ?? {};
     const transport = transportRes.rows[0] ?? {};
     const growth = growthRes.rows[0] ?? {};
+    const populationGrowth = toNumberOrNull(demo.population_growth);
 
-    const medianIncome = this.toNumber(demo.median_income, 350000);
-    const higherEduPct = this.toNumber(demo.higher_edu_pct, 40);
-    const familiesWithKidsPct = this.toNumber(demo.families_with_kids_pct, 30);
-    const populationGrowth = this.toNumber(demo.population_growth, 0);
-
-    const avgSchoolPerformance = this.toNumber(schools.avg_performance, 0);
-    const schoolCount = this.toNumber(schools.school_count, 0);
-
-    const incidentCount = this.toNumber(crime.incident_count, 250);
-    const trend = String(crime.trend ?? "stable").toLowerCase();
-    const trendAdjustment = trend === "down" ? 8 : trend === "up" ? -8 : 0;
-
-    const greenSpaceRatio = this.toNumber(env.green_space_ratio, 20);
-    const floodRisk = this.toNumber(env.flood_risk, 20);
-    const airQuality = this.toNumber(env.air_quality_index, 50);
-    const temperatureAvg = this.toNumber(env.temperature_avg, 8);
-
-    const addressCount = this.toNumber(housing.address_count, 0);
-    const avgBuildingYear = this.toNumber(housing.avg_building_year, 2000);
-
-    const stopCount = this.toNumber(transport.stop_count, 0);
-    const avgRoutes = this.toNumber(transport.avg_routes, 0);
-
-    const projectCount = this.toNumber(growth.project_count, 0);
-    const avgConfidence = this.toNumber(growth.avg_confidence, 60);
-
-    const demographicsScore = this.roundScore(
-      (medianIncome / 600000) * 40 + higherEduPct * 0.35 + familiesWithKidsPct * 0.25,
-    );
-
-    const schoolsScore = this.roundScore(avgSchoolPerformance + Math.min(schoolCount * 2, 10));
-
-    const transportScore = this.roundScore(avgRoutes * 14 + Math.min(stopCount * 8, 30));
-
-    const housingAgePenalty = Math.max(0, year - avgBuildingYear) * 1.1;
-    const housingScore = this.roundScore(92 - housingAgePenalty + Math.min(addressCount * 2, 20));
-
-    const safetyScore = this.roundScore(100 - incidentCount / 8 + trendAdjustment);
-
-    const greenAreasScore = this.roundScore(greenSpaceRatio * 2.6);
-
-    const environmentScore = this.roundScore(
-      100 -
-        floodRisk * 1.2 -
-        airQuality * 0.9 +
-        Math.max(0, 18 - Math.abs(temperatureAvg - 10)) * 2,
-    );
-
-    const futureGrowthScore = this.roundScore(
-      Math.min(projectCount * 12, 55) + avgConfidence * 0.35 + populationGrowth * 4,
-    );
-
-    const overallScore = this.roundScore(
-      demographicsScore * 0.14 +
-        housingScore * 0.14 +
-        transportScore * 0.14 +
-        schoolsScore * 0.18 +
-        safetyScore * 0.14 +
-        greenAreasScore * 0.12 +
-        environmentScore * 0.06 +
-        futureGrowthScore * 0.08,
-    );
-
-    const rawData = {
-      inputs: {
-        demo,
-        schools,
-        crime,
-        env,
-        housing,
-        transport,
-        growth,
-      },
-      calculations: {
-        year,
-        medianIncome,
-        higherEduPct,
-        familiesWithKidsPct,
+    const result = computeScores({
+      year,
+      demographics: {
+        medianIncome: toNumberOrNull(demo.median_income),
+        higherEduPct: toNumberOrNull(demo.higher_edu_pct),
+        familiesWithKidsPct: toNumberOrNull(demo.families_with_kids_pct),
         populationGrowth,
-        avgSchoolPerformance,
-        schoolCount,
-        incidentCount,
-        trendAdjustment,
-        greenSpaceRatio,
-        floodRisk,
-        airQuality,
-        temperatureAvg,
-        addressCount,
-        avgBuildingYear,
-        stopCount,
-        avgRoutes,
-        projectCount,
-        avgConfidence,
       },
-    };
+      schools: {
+        avgPerformance: toNumberOrNull(schools.avg_performance),
+        schoolCount: toNumberOrNull(schools.school_count),
+      },
+      transport: {
+        stopCount: toNumberOrNull(transport.stop_count),
+        avgRoutes: toNumberOrNull(transport.avg_routes),
+      },
+      housing: {
+        avgBuildingYear: toNumberOrNull(housing.avg_building_year),
+        addressCount: toNumberOrNull(housing.address_count),
+      },
+      safety: { incidentCount: toNumberOrNull(crime.incident_count), trend: crime.trend },
+      greenAreas: { greenSpaceRatio: toNumberOrNull(env.green_space_ratio) },
+      environment: {
+        floodRisk: toNumberOrNull(env.flood_risk),
+        airQuality: toNumberOrNull(env.air_quality_index),
+        temperatureAvg: toNumberOrNull(env.temperature_avg),
+      },
+      futureGrowth: {
+        projectCount: toNumberOrNull(growth.project_count),
+        avgConfidence: toNumberOrNull(growth.avg_confidence),
+        populationGrowth,
+      },
+    });
 
-    await pool.query(
-      `INSERT INTO neighborhood_scores (
-         deso_id,
-         overall_score,
-         demographics_score,
-         housing_market_score,
-         transport_score,
-         schools_score,
-         safety_score,
-         green_areas_score,
-         environment_score,
-         future_growth_score,
-         calculated_at,
-         raw_data
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),$11::jsonb)
-       ON CONFLICT (deso_id) DO UPDATE SET
-         overall_score = EXCLUDED.overall_score,
-         demographics_score = EXCLUDED.demographics_score,
-         housing_market_score = EXCLUDED.housing_market_score,
-         transport_score = EXCLUDED.transport_score,
-         schools_score = EXCLUDED.schools_score,
-         safety_score = EXCLUDED.safety_score,
-         green_areas_score = EXCLUDED.green_areas_score,
-         environment_score = EXCLUDED.environment_score,
-         future_growth_score = EXCLUDED.future_growth_score,
-         calculated_at = NOW(),
-         raw_data = EXCLUDED.raw_data`,
-      [
-        desoId,
-        overallScore,
-        demographicsScore,
-        housingScore,
-        transportScore,
-        schoolsScore,
-        safetyScore,
-        greenAreasScore,
-        environmentScore,
-        futureGrowthScore,
-        JSON.stringify(rawData),
-      ],
-    );
+    await this.persistScore("deso", desoId, result, {
+      demo,
+      schools,
+      crime,
+      env,
+      housing,
+      transport,
+      growth,
+    });
 
     return {
       status: "ok",
       deso_id: desoId,
-      overall_score: overallScore,
+      overall_score: result.overall,
+      coverage: result.coverage,
+      missing: result.missing,
     };
   }
 
@@ -4630,11 +3664,12 @@ export class IngestionEngine {
     if (compatibilityDesoId) {
       await this.syncCompatibilityDistrictFromDeso(districtId, compatibilityDesoId, year);
     }
+    const q = IngestionEngine.SCORING_QUALITIES;
 
     const demographicsRes = await pool.query(
       `SELECT median_income, higher_edu_pct, families_with_kids_pct, population_growth
        FROM demographics
-       WHERE district_id = $1
+       WHERE district_id = $1 AND quality IN ${q}
        ORDER BY year DESC
        LIMIT 1`,
       [districtId],
@@ -4650,7 +3685,7 @@ export class IngestionEngine {
          )
            performance
          FROM schools
-         WHERE district_id = $1
+         WHERE district_id = $1 AND quality IN ${q}
          ORDER BY
            COALESCE(NULLIF(school_unit_code, ''), LOWER(name) || '|' || LOWER(COALESCE(address, ''))),
            COALESCE(performance, 0) DESC,
@@ -4663,7 +3698,7 @@ export class IngestionEngine {
     const crimeRes = await pool.query(
       `SELECT incident_count, trend
        FROM crime_stats
-       WHERE district_id = $1
+       WHERE district_id = $1 AND quality IN ${q}
        ORDER BY year DESC
        LIMIT 1`,
       [districtId],
@@ -4672,7 +3707,7 @@ export class IngestionEngine {
     const futureRes = await pool.query(
       `SELECT COUNT(*) AS project_count, AVG(confidence) AS avg_confidence
        FROM future_projects
-       WHERE district_id = $1`,
+       WHERE district_id = $1 AND quality IN ${q}`,
       [districtId],
     );
 
@@ -4680,110 +3715,38 @@ export class IngestionEngine {
     const schools = schoolsRes.rows[0] ?? {};
     const crime = crimeRes.rows[0] ?? {};
     const future = futureRes.rows[0] ?? {};
+    const populationGrowth = toNumberOrNull(demo.population_growth);
 
-    const medianIncome = this.toNumber(demo.median_income, 350000);
-    const higherEduPct = this.toNumber(demo.higher_edu_pct, 40);
-    const familiesWithKidsPct = this.toNumber(demo.families_with_kids_pct, 30);
-    const populationGrowth = this.toNumber(demo.population_growth, 0);
-
-    const avgSchoolPerformance = this.toNumber(schools.avg_performance, 0);
-    const schoolCount = this.toNumber(schools.school_count, 0);
-
-    const incidentCount = this.toNumber(crime.incident_count, 250);
-    const trend = String(crime.trend ?? "stable").toLowerCase();
-    const trendAdjustment = trend === "down" ? 8 : trend === "up" ? -8 : 0;
-
-    const projectCount = this.toNumber(future.project_count, 0);
-    const avgConfidence = this.toNumber(future.avg_confidence, 60);
-
-    const demographicsScore = this.roundScore(
-      (medianIncome / 600000) * 40 + higherEduPct * 0.35 + familiesWithKidsPct * 0.25,
-    );
-    const schoolsScore = this.roundScore(avgSchoolPerformance + Math.min(schoolCount * 2, 10));
-    const transportScore = this.roundScore(80);
-    const housingScore = this.roundScore(78);
-    const safetyScore = this.roundScore(100 - incidentCount / 8 + trendAdjustment);
-    const greenAreasScore = this.roundScore(75);
-    const futureGrowthScore = this.roundScore(
-      Math.min(projectCount * 12, 55) + avgConfidence * 0.35 + populationGrowth * 4,
-    );
-
-    const overallScore = this.roundScore(
-      demographicsScore * 0.14 +
-        housingScore * 0.14 +
-        transportScore * 0.14 +
-        schoolsScore * 0.18 +
-        safetyScore * 0.14 +
-        greenAreasScore * 0.12 +
-        futureGrowthScore * 0.08,
-    );
-
-    const rawData = {
-      inputs: {
-        demo,
-        schools,
-        crime,
-        future,
-      },
-      calculations: {
-        year,
-        medianIncome,
-        higherEduPct,
-        familiesWithKidsPct,
+    // Transport, housing, green areas and environment have no district-level inputs; they
+    // stay null instead of the constants (80 / 78 / 75) used before.
+    const result = computeScores({
+      year,
+      demographics: {
+        medianIncome: toNumberOrNull(demo.median_income),
+        higherEduPct: toNumberOrNull(demo.higher_edu_pct),
+        familiesWithKidsPct: toNumberOrNull(demo.families_with_kids_pct),
         populationGrowth,
-        avgSchoolPerformance,
-        schoolCount,
-        incidentCount,
-        trendAdjustment,
-        projectCount,
-        avgConfidence,
       },
-    };
+      schools: {
+        avgPerformance: toNumberOrNull(schools.avg_performance),
+        schoolCount: toNumberOrNull(schools.school_count),
+      },
+      safety: { incidentCount: toNumberOrNull(crime.incident_count), trend: crime.trend },
+      futureGrowth: {
+        projectCount: toNumberOrNull(future.project_count),
+        avgConfidence: toNumberOrNull(future.avg_confidence),
+        populationGrowth,
+      },
+    });
 
-    await pool.query(
-      `INSERT INTO district_scores (
-         district_id,
-         overall_score,
-         demographics_score,
-         housing_market_score,
-         transport_score,
-         schools_score,
-         safety_score,
-         green_areas_score,
-         future_growth_score,
-         calculated_at,
-         raw_data
-       )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10::jsonb)
-       ON CONFLICT (district_id) DO UPDATE SET
-         overall_score = EXCLUDED.overall_score,
-         demographics_score = EXCLUDED.demographics_score,
-         housing_market_score = EXCLUDED.housing_market_score,
-         transport_score = EXCLUDED.transport_score,
-         schools_score = EXCLUDED.schools_score,
-         safety_score = EXCLUDED.safety_score,
-         green_areas_score = EXCLUDED.green_areas_score,
-         future_growth_score = EXCLUDED.future_growth_score,
-         calculated_at = NOW(),
-         raw_data = EXCLUDED.raw_data`,
-      [
-        districtId,
-        overallScore,
-        demographicsScore,
-        housingScore,
-        transportScore,
-        schoolsScore,
-        safetyScore,
-        greenAreasScore,
-        futureGrowthScore,
-        JSON.stringify(rawData),
-      ],
-    );
+    await this.persistScore("district", districtId, result, { demo, schools, crime, future });
 
     return {
       status: "ok",
       district_id: districtId,
-      overall_score: overallScore,
+      overall_score: result.overall,
+      coverage: result.coverage,
+      missing: result.missing,
     };
   }
 
@@ -4794,42 +3757,13 @@ export class IngestionEngine {
       return { status: "ok", district_id: districtId, source: "deso-compat-demographics" };
     }
 
-    const population = this.areaInt(districtId, "district-population", 10000, 30000);
-
-    const demographicRecord = {
+    // Districts that are not backed by an official DeSO have no demographic source (DR-02).
+    return {
+      status: "skipped",
       district_id: districtId,
-      year,
-      population_total: population,
-      ...this.buildDemographicProfile(districtId, population),
-      source_links: this.staticSource("District Data", "https://www.scb.se/"),
-      raw_data: { type: "district-generated", districtId, year },
+      source: "district-demographics",
+      reason: "no_official_area_backing",
     };
-
-    await pool.query(
-      `INSERT INTO demographics (district_id, year, population_total, population_growth, 
-         median_income, higher_edu_pct, foreign_born_pct, families_with_kids_pct, source_links, raw_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
-       ON CONFLICT (district_id, year) DO UPDATE SET
-         population_total = EXCLUDED.population_total,
-         population_growth = EXCLUDED.population_growth,
-         median_income = EXCLUDED.median_income,
-         source_links = EXCLUDED.source_links,
-         raw_data = EXCLUDED.raw_data`,
-      [
-        demographicRecord.district_id,
-        demographicRecord.year,
-        demographicRecord.population_total,
-        demographicRecord.population_growth,
-        demographicRecord.median_income,
-        demographicRecord.higher_edu_pct,
-        demographicRecord.foreign_born_pct,
-        demographicRecord.families_with_kids_pct,
-        JSON.stringify(demographicRecord.source_links),
-        JSON.stringify(demographicRecord.raw_data ?? null),
-      ],
-    );
-
-    return { status: "ok", district_id: districtId };
   }
 
   async ingestAll(desoId = "123", region = "Stockholm", year = 2024, areaName?: string) {
@@ -4842,39 +3776,50 @@ export class IngestionEngine {
     await this.ensureDesoArea(desoId, { areaName, region });
     this.logStepDone(scope, "ensure area", stepStartedAt);
 
-    stepStartedAt = this.logStepStart(scope, "demographics", region);
-    await this.ingestSCB(desoId, region);
-    this.logStepDone(scope, "demographics", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "crime", `year=${year}`);
-    await this.ingestCrime(desoId, year);
-    this.logStepDone(scope, "crime", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "transport");
-    await this.ingestTransport(desoId);
-    this.logStepDone(scope, "transport", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "schools");
-    await this.ingestSchools(desoId);
-    this.logStepDone(scope, "schools", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "properties");
-    await this.ingestLantmateriet(desoId);
-    this.logStepDone(scope, "properties", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "environment", `year=${year}`);
-    await this.ingestSMHI(desoId, year);
-    this.logStepDone(scope, "environment", stepStartedAt);
-
-    stepStartedAt = this.logStepStart(scope, "future projects");
-    await this.ingestMunicipalOpenData(desoId);
-    this.logStepDone(scope, "future projects", stepStartedAt);
+    const steps: Array<[string, string, () => Promise<{ status?: string; count?: number }>]> = [
+      ["demographics", "scb", () => this.ingestSCB(desoId, region)],
+      ["crime", "bra", () => this.ingestCrime(desoId, year)],
+      ["transport", "trafiklab", () => this.ingestTransport(desoId)],
+      ["schools", "skolverket", () => this.ingestSchools(desoId)],
+      ["properties", "lantmateriet", () => this.ingestLantmateriet(desoId)],
+      ["environment", "smhi", () => this.ingestSMHI(desoId, year)],
+      ["future projects", "municipal_projects", () => this.ingestMunicipalOpenData(desoId)],
+    ];
+    for (const [step, source, run] of steps) {
+      stepStartedAt = this.logStepStart(scope, step);
+      const result = await this.runStep(source, run);
+      this.logStepDone(scope, step, stepStartedAt, result?.status ?? "failed");
+    }
 
     stepStartedAt = this.logStepStart(scope, "score", `year=${year}`);
     const scoreResult = await this.calculateNeighborhoodScore(desoId, year);
-    this.logStepDone(scope, "score", stepStartedAt, `overall=${scoreResult.overall_score}`);
+    this.logStepDone(
+      scope,
+      "score",
+      stepStartedAt,
+      `overall=${scoreResult.overall_score ?? "n/a"}, coverage=${scoreResult.coverage}`,
+    );
     this.logProgress(scope, `complete in ${this.formatDuration(Date.now() - startedAt)}`);
     return { status: "complete", deso_id: desoId, region, year, score: scoreResult };
+  }
+
+  /** Recomputes every DeSO score from stored rows. Makes no network calls. */
+  async rescoreAllAreas(year = 2025) {
+    const res = await pool.query(`SELECT id FROM deso_areas ORDER BY id`);
+    let scored = 0;
+    let withOverall = 0;
+    for (const row of res.rows as Array<{ id: string }>) {
+      try {
+        const result = await this.calculateNeighborhoodScore(String(row.id), year);
+        scored += 1;
+        if (result.overall_score !== null) withOverall += 1;
+        this.recorder.record({ source: "scoring", status: "ok", rowsWritten: 1 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.recorder.record({ source: "scoring", status: "failed", message });
+      }
+    }
+    return { status: "complete", areas: res.rows.length, scored, withOverall };
   }
 
   async ingestAllStockholmAreas(options?: { year?: number; limit?: number }) {
@@ -4919,6 +3864,7 @@ export class IngestionEngine {
         this.logProgress(itemScope, `done in ${this.formatDuration(Date.now() - itemStartedAt)}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        this.recorder.record({ source: "area", status: "failed", message: errorMessage });
         results.push({
           deso_id: area.deso_id,
           area_name: area.area_name,
@@ -5055,17 +4001,32 @@ export class IngestionEngine {
         this.logStepDone(itemScope, "seed metadata", stepStartedAt);
 
         stepStartedAt = this.logStepStart(itemScope, "demographics", `year=${year}`);
-        await this.ingestDemographicsForDistrict(district.district_id, year);
+        this.recorder.record(
+          outcomeFromResult(
+            "district_demographics",
+            await this.ingestDemographicsForDistrict(district.district_id, year),
+          ),
+        );
         this.logStepDone(itemScope, "demographics", stepStartedAt);
 
         stepStartedAt = this.logStepStart(itemScope, "schools");
-        await this.ingestSchoolsForDistrict(district.district_id, district.municipality_code);
+        this.recorder.record(
+          outcomeFromResult(
+            "district_schools",
+            await this.ingestSchoolsForDistrict(district.district_id, district.municipality_code),
+          ),
+        );
         this.logStepDone(itemScope, "schools", stepStartedAt);
 
         stepStartedAt = this.logStepStart(itemScope, "future projects");
-        await this.ingestMunicipalOpenDataForDistrict(
-          district.district_id,
-          district.municipality_name,
+        this.recorder.record(
+          outcomeFromResult(
+            "district_projects",
+            await this.ingestMunicipalOpenDataForDistrict(
+              district.district_id,
+              district.municipality_name,
+            ),
+          ),
         );
         this.logStepDone(itemScope, "future projects", stepStartedAt);
 
@@ -5081,6 +4042,7 @@ export class IngestionEngine {
         this.logProgress(itemScope, `done in ${this.formatDuration(Date.now() - itemStartedAt)}`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        this.recorder.record({ source: "district", status: "failed", message: errorMessage });
         console.error(`[${itemScope}] failed:`, error);
         results.push({
           district_id: district.district_id,
@@ -5157,6 +4119,7 @@ export class IngestionEngine {
       this.logProgress(groupScope, `start: districts=${districtsInMunicipality.length}`);
 
       let municipalSchools: SchoolRecord[] = [];
+      let fetchFailed = false;
       try {
         const fetchStartedAt = this.logStepStart(groupScope, "fetch municipal schools");
         const fetched = await this.fetchSkolverketSchools(
@@ -5178,12 +4141,21 @@ export class IngestionEngine {
           );
         });
         this.logProgress(groupScope, `usable schools=${municipalSchools.length}`);
-      } catch (_error) {
-        municipalSchools = [];
-        this.logProgress(
-          groupScope,
-          "fetch municipal schools failed, using fallbacks where needed",
-        );
+        this.recorder.record({
+          source: "skolverket",
+          status: "ok",
+          rowsWritten: municipalSchools.length,
+        });
+      } catch (error) {
+        fetchFailed = true;
+        const message = error instanceof Error ? error.message : String(error);
+        this.recorder.record({ source: "skolverket", status: "failed", message });
+        this.logProgress(groupScope, `fetch municipal schools failed: ${message}`);
+      }
+
+      // Never wipe existing district schools because a fetch failed.
+      if (fetchFailed) {
+        continue;
       }
 
       const clearStartedAt = this.logStepStart(groupScope, "clear existing district schools");
@@ -5204,12 +4176,17 @@ export class IngestionEngine {
       }
 
       for (const school of municipalSchools) {
+        if (school.lat === null || school.lng === null) {
+          continue;
+        }
         let nearestDistrictId: string | null = null;
         let nearestDistance = Number.POSITIVE_INFINITY;
 
         for (const district of districtsInMunicipality) {
-          const anchor =
-            districtCentroids.get(district.district_id) ?? this.areaAnchor(district.district_id);
+          const anchor = districtCentroids.get(district.district_id);
+          if (!anchor) {
+            continue;
+          }
           const latDiff = school.lat - anchor.lat;
           const lngDiff = school.lng - anchor.lng;
           const distance = latDiff * latDiff + lngDiff * lngDiff;
@@ -5228,8 +4205,6 @@ export class IngestionEngine {
         try {
           const districtScope = `district schools ${district.district_id}`;
           const districtStartedAt = Date.now();
-          const anchor =
-            districtCentroids.get(district.district_id) ?? this.areaAnchor(district.district_id);
           const assignedSchools = (schoolsByDistrict.get(district.district_id) ?? [])
             .sort((left, right) => left.distance - right.distance)
             .map((entry) => entry.school);
@@ -5238,77 +4213,10 @@ export class IngestionEngine {
             new Map(assignedSchools.map((school) => [school.name.toLowerCase(), school])).values(),
           );
 
-          const districtSchools =
-            uniqueAssignedSchools.length > 0
-              ? uniqueAssignedSchools.slice(0, 8)
-              : [
-                  {
-                    deso_id: district.district_id,
-                    name: `${district.district_name} Grundskola`,
-                    lat: anchor.lat,
-                    lng: anchor.lng,
-                    performance: this.areaInt(
-                      district.district_id,
-                      "fallback-school-perf:1",
-                      72,
-                      96,
-                    ),
-                    students: this.areaInt(
-                      district.district_id,
-                      "fallback-school-students:1",
-                      280,
-                      1200,
-                    ),
-                    source_links: [
-                      { label: "Municipality schools registry", url: "https://www.skolverket.se" },
-                    ],
-                    raw_data: { fallback: true, district_id: district.district_id, ordinal: 1 },
-                  },
-                  {
-                    deso_id: district.district_id,
-                    name: `${district.district_name} Internationella Skola`,
-                    lat: anchor.lat + 0.003,
-                    lng: anchor.lng - 0.003,
-                    performance: this.areaInt(
-                      district.district_id,
-                      "fallback-school-perf:2",
-                      75,
-                      95,
-                    ),
-                    students: this.areaInt(
-                      district.district_id,
-                      "fallback-school-students:2",
-                      250,
-                      950,
-                    ),
-                    source_links: [
-                      { label: "Municipality schools registry", url: "https://www.skolverket.se" },
-                    ],
-                    raw_data: { fallback: true, district_id: district.district_id, ordinal: 2 },
-                  },
-                  {
-                    deso_id: district.district_id,
-                    name: `${district.district_name} Friskola`,
-                    lat: anchor.lat - 0.002,
-                    lng: anchor.lng + 0.002,
-                    performance: this.areaInt(
-                      district.district_id,
-                      "fallback-school-perf:3",
-                      70,
-                      92,
-                    ),
-                    students: this.areaInt(
-                      district.district_id,
-                      "fallback-school-students:3",
-                      180,
-                      800,
-                    ),
-                    source_links: [
-                      { label: "Municipality schools registry", url: "https://www.skolverket.se" },
-                    ],
-                    raw_data: { fallback: true, district_id: district.district_id, ordinal: 3 },
-                  },
-                ];
+          // Nearest-centroid assignment is a heuristic, so these rows are 'derived'.
+          const districtSchools = uniqueAssignedSchools
+            .slice(0, 8)
+            .map((school) => ({ ...school, quality: "derived" as const }));
 
           for (const school of districtSchools) {
             await this.upsertSchoolRecord({

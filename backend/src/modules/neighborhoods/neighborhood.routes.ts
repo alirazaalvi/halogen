@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -11,110 +10,11 @@ import {
   municipalities,
   neighborhoodScores,
 } from "../../db/schema";
+import { publicScores, toNumeric } from "../../lib/api/area-scores";
 import { sendApiError, sendApiSuccess } from "../../lib/api/contracts";
 import { parseOrReply } from "../../lib/api/validation";
 import { getPrimaryDistrictAliasMap } from "../../lib/district-aliases";
 import { buildNamedDistrictSchoolResolutionQuery } from "./named-district-school-resolution";
-
-// #region debug-point A:akalla-neighborhood-detail
-const akallaDebugConfig = (() => {
-  let debugServerUrl = "http://127.0.0.1:7777/event";
-  let debugSessionId = "akalla-data";
-
-  try {
-    const envFile = readFileSync(
-      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/akalla-data.env",
-      "utf8",
-    );
-    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
-    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
-  } catch {}
-
-  return { debugServerUrl, debugSessionId };
-})();
-// #endregion
-
-// #region debug-point A:district-ui-config
-const districtUiDebugConfig = (() => {
-  let debugServerUrl = "http://127.0.0.1:7777/event";
-  let debugSessionId = "district-ui-data";
-
-  try {
-    const envFile = readFileSync(
-      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/district-ui-data.env",
-      "utf8",
-    );
-    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
-    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
-  } catch {}
-
-  return { debugServerUrl, debugSessionId };
-})();
-
-const districtUiDebugTargetIds = new Set([
-  "ND-0184-hagalund",
-  "ND-0183-hallonbergen",
-  "ND-0183-rissne",
-]);
-
-function reportDistrictUiDebug(
-  hypothesisId: string,
-  msg: string,
-  data: Record<string, unknown>,
-): void {
-  fetch(districtUiDebugConfig.debugServerUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: districtUiDebugConfig.debugSessionId,
-      runId: "pre-fix",
-      hypothesisId,
-      location: "src/modules/neighborhoods/neighborhood.routes.ts",
-      msg,
-      data,
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
-
-// #region debug-point A:rissne-school-boundary-config
-const rissneSchoolDebugConfig = (() => {
-  let debugServerUrl = "http://127.0.0.1:7777/event";
-  let debugSessionId = "rissne-school-boundary";
-
-  try {
-    const envFile = readFileSync(
-      "/Users/ali.raza/Canary/try-sweden-ai-main/.dbg/rissne-school-boundary.env",
-      "utf8",
-    );
-    debugServerUrl = envFile.match(/DEBUG_SERVER_URL=(.+)/)?.[1] ?? debugServerUrl;
-    debugSessionId = envFile.match(/DEBUG_SESSION_ID=(.+)/)?.[1] ?? debugSessionId;
-  } catch {}
-
-  return { debugServerUrl, debugSessionId };
-})();
-
-function reportRissneSchoolDebug(
-  hypothesisId: string,
-  msg: string,
-  data: Record<string, unknown>,
-): void {
-  fetch(rissneSchoolDebugConfig.debugServerUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: rissneSchoolDebugConfig.debugSessionId,
-      runId: "pre-fix",
-      hypothesisId,
-      location: "src/modules/neighborhoods/neighborhood.routes.ts",
-      msg,
-      data,
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
 
 function toSlug(value: string) {
   return value
@@ -123,32 +23,6 @@ function toSlug(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
-}
-
-function toNumeric(value: unknown): number | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function clampScore(value: number): number {
-  return Math.max(0, Math.min(100, Math.round(value * 10) / 10));
-}
-
-function completeScores(scores: Record<string, unknown>) {
-  const overall = clampScore(toNumeric(scores.overallScore) ?? 75);
-  return {
-    overall,
-    demographics: clampScore(toNumeric(scores.demographicsScore) ?? overall),
-    housing: clampScore(toNumeric(scores.housingMarketScore) ?? overall - 2),
-    transport: clampScore(toNumeric(scores.transportScore) ?? overall),
-    schools: clampScore(toNumeric(scores.schoolsScore) ?? overall),
-    safety: clampScore(toNumeric(scores.safetyScore) ?? overall - 3),
-    green: clampScore(toNumeric(scores.greenAreasScore) ?? overall - 1),
-    growth: clampScore(toNumeric(scores.futureGrowthScore) ?? overall),
-  };
 }
 
 function formatDistanceKm(meters: number | null | undefined): string {
@@ -193,49 +67,6 @@ function parseSourceLinks(value: unknown): SourceLink[] {
   }
 
   return links;
-}
-
-function fallbackDemographics(
-  areaPopulation: number,
-  score: ReturnType<typeof completeScores>,
-): {
-  population_total: number;
-  population_growth: number;
-  median_income: number;
-  higher_edu_pct: number;
-  families_with_kids_pct: number;
-  foreign_born_pct: number;
-  year: number;
-} {
-  const estimatedPopulation =
-    areaPopulation > 0 ? areaPopulation : Math.max(2500, Math.round(8000 + score.overall * 120));
-
-  return {
-    population_total: estimatedPopulation,
-    population_growth: Number(Math.max(-1.5, Math.min(4.5, (score.growth - 60) / 10)).toFixed(1)),
-    median_income: Math.round(230000 + score.demographics * 3200),
-    higher_edu_pct: Number(Math.max(20, Math.min(70, score.demographics * 0.62)).toFixed(1)),
-    families_with_kids_pct: Number(Math.max(18, Math.min(52, score.schools * 0.48)).toFixed(1)),
-    foreign_born_pct: Number(Math.max(8, Math.min(38, (100 - score.housing) * 0.35)).toFixed(1)),
-    year: new Date().getFullYear(),
-  };
-}
-
-function fallbackFutureProjects(areaName: string, score: ReturnType<typeof completeScores>) {
-  const nextYear = new Date().getFullYear() + 1;
-  const projectTemplates = [
-    { type: "Transport", title: `${areaName} Mobility Upgrade` },
-    { type: "School", title: `${areaName} School Capacity Expansion` },
-    { type: "Park", title: `${areaName} Family Park Renewal` },
-  ];
-
-  const count = score.growth >= 85 ? 3 : 2;
-  return projectTemplates.slice(0, count).map((template, index) => ({
-    year: nextYear + (index === 2 ? 1 : 0),
-    title: template.title,
-    type: template.type,
-    confidence: clampScore(score.growth - 4 + index * 2),
-  }));
 }
 
 type AreaType = "namedDistrict" | "district" | "deso";
@@ -368,7 +199,9 @@ async function getScores(areaId: string, areaType: AreaType) {
          SUM(ns.green_areas_score * COALESCE(ndm.priority_weight, 1)::numeric) /
            NULLIF(SUM(CASE WHEN ns.green_areas_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "greenAreasScore",
          SUM(ns.future_growth_score * COALESCE(ndm.priority_weight, 1)::numeric) /
-           NULLIF(SUM(CASE WHEN ns.future_growth_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "futureGrowthScore"
+           NULLIF(SUM(CASE WHEN ns.future_growth_score IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "futureGrowthScore",
+         SUM(ns.data_coverage * COALESCE(ndm.priority_weight, 1)::numeric) /
+           NULLIF(SUM(CASE WHEN ns.data_coverage IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric ELSE 0 END), 0) AS "dataCoverage"
        FROM named_district_deso_map ndm
        JOIN neighborhood_scores ns ON ns.deso_id = ndm.deso_id
        WHERE ndm.district_id = $1`,
@@ -392,6 +225,23 @@ async function getScores(areaId: string, areaType: AreaType) {
       .limit(1);
     return result[0] || {};
   }
+}
+
+function scorePayload(type: "district" | "deso", scores: Record<string, unknown>) {
+  const view = publicScores(scores);
+  return {
+    type,
+    score: view.overall,
+    transport: view.transport,
+    schools: view.schools,
+    safety: view.safety,
+    housing: view.housing,
+    green: view.green,
+    growth: view.growth,
+    coverage: view.coverage,
+    missing: view.missing,
+    scoringVersion: view.scoringVersion,
+  };
 }
 
 export async function neighborhoodRoutes(fastify: FastifyInstance, _options: object) {
@@ -506,19 +356,6 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     const areaLng = Number(area.lng ?? 0);
     const areaLat = Number(area.lat ?? 0);
 
-    // #region debug-point A:district-ui-area
-    if (districtUiDebugTargetIds.has(deso_id)) {
-      reportDistrictUiDebug("A", "[DEBUG] District UI area resolved", {
-        districtId: deso_id,
-        areaType,
-        areaName: area.name,
-        municipality: area.municipality,
-        areaLat,
-        areaLng,
-      });
-    }
-    // #endregion
-
     // Radius for school proximity search: larger for districts (city-wide areas), smaller for deso
     const isDistrict = areaType !== "deso";
     const schoolRadiusMeters = isDistrict ? 5000 : 2000;
@@ -534,54 +371,17 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
           })
         : null;
 
-    // #region debug-point A:rissne-school-entry
-    if (deso_id === "ND-0183-rissne") {
-      reportRissneSchoolDebug("A", "[DEBUG] Rissne school selection entry", {
-        districtId: deso_id,
-        areaType,
-        areaName: area.name,
-        areaLat,
-        areaLng,
-        sourceType: area.sourceType,
-        legacyDistrictId: area.legacyDistrictId,
-        namedDistrictQueryEnabled: Boolean(namedDistrictSchoolQuery),
-        schoolRadiusMeters,
-      });
-    }
-    // #endregion
-
-    // #region debug-point B:akalla-before-schools
-    if (deso_id === "ND-0180-akalla") {
-      fetch(akallaDebugConfig.debugServerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: akallaDebugConfig.debugSessionId,
-          runId: "pre-fix",
-          hypothesisId: "B",
-          location: "src/modules/neighborhoods/neighborhood.routes.ts",
-          msg: "[DEBUG] Akalla before schools query",
-          data: {
-            areaType,
-            schoolRadiusMeters,
-          },
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
-
     const schoolsRes = await pool.query(
       areaType === "namedDistrict"
         ? (namedDistrictSchoolQuery?.text ??
-            "SELECT NULL::text AS name, '' AS address, 0 AS student_count, 0 AS performance, NULL::double precision AS lat, NULL::double precision AS lng, '[]'::jsonb AS source_links, NULL::double precision AS distance_meters WHERE FALSE")
+            "SELECT NULL::text AS name, '' AS address, NULL::int AS student_count, NULL::numeric AS performance, NULL::double precision AS lat, NULL::double precision AS lng, '[]'::jsonb AS source_links, NULL::double precision AS distance_meters WHERE FALSE")
         : isDistrict
           ? `WITH ranked_schools AS (
              SELECT DISTINCT ON (school_identity)
                s.name,
                COALESCE(s.address, '') AS address,
-               COALESCE(s.student_count, 0) AS student_count,
-               COALESCE(s.performance, 0) AS performance,
+               s.student_count AS student_count,
+               s.performance AS performance,
                ST_Y(s.coordinates) AS lat,
                ST_X(s.coordinates) AS lng,
                COALESCE(s.source_links, '[]'::jsonb) AS source_links,
@@ -598,6 +398,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
                    LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
                  ) AS school_identity
                FROM schools s
+               WHERE s.quality IN ('measured', 'derived')
              ) s
              JOIN districts d ON d.id = $1
              WHERE s.coordinates IS NOT NULL
@@ -610,8 +411,8 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            )
            SELECT
              name,
@@ -623,14 +424,14 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              source_links,
              distance_meters
            FROM ranked_schools
-           ORDER BY distance_meters ASC, performance DESC
+           ORDER BY distance_meters ASC, performance DESC NULLS LAST
            LIMIT 8`
           : `WITH ranked_schools AS (
              SELECT DISTINCT ON (school_identity)
                name,
                COALESCE(address, '') AS address,
-               COALESCE(student_count, 0) AS student_count,
-               COALESCE(performance, 0) AS performance,
+               student_count,
+               performance,
                ST_Y(coordinates) AS lat,
                ST_X(coordinates) AS lng,
                COALESCE(source_links, '[]'::jsonb) AS source_links,
@@ -647,6 +448,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
                    LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))
                  ) AS school_identity
                FROM schools s
+               WHERE s.quality IN ('measured', 'derived')
              ) s
              WHERE s.coordinates IS NOT NULL
                AND ST_DWithin(
@@ -657,8 +459,8 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            )
            SELECT
              name,
@@ -670,7 +472,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              source_links,
              distance_meters
            FROM ranked_schools
-           ORDER BY distance_meters ASC, performance DESC
+           ORDER BY distance_meters ASC, performance DESC NULLS LAST
            LIMIT 8`,
       areaType === "namedDistrict"
         ? (namedDistrictSchoolQuery?.values ?? [])
@@ -678,130 +480,6 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
           ? [deso_id, schoolRadiusMeters, schoolRadiusDegrees]
           : [areaLng, areaLat, schoolRadiusMeters],
     );
-
-    // #region debug-point B:rissne-school-candidates
-    if (deso_id === "ND-0183-rissne") {
-      const candidateSummaryRes = await pool.query(
-        `WITH named_matches AS (
-           SELECT
-             s.name,
-             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_Distance(s.coordinates::geography, nd.centroid::geography) END AS distance_meters,
-             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_Y(s.coordinates) END AS lat,
-             CASE WHEN s.coordinates IS NULL THEN NULL ELSE ST_X(s.coordinates) END AS lng
-           FROM schools s
-           JOIN named_districts nd ON nd.id = $1
-           WHERE s.district_id = $2
-             AND s.name ILIKE '%' || nd.name || '%'
-         ),
-         nearby_real_schools AS (
-           SELECT DISTINCT ON (
-             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
-           )
-             s.name,
-             ST_Distance(s.coordinates::geography, nd.centroid::geography) AS distance_meters,
-             ST_Y(s.coordinates) AS lat,
-             ST_X(s.coordinates) AS lng
-           FROM schools s
-           JOIN named_districts nd ON nd.id = $1
-           WHERE s.coordinates IS NOT NULL
-             AND ST_DWithin(s.coordinates::geography, nd.centroid::geography, $3)
-           ORDER BY
-             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
-             distance_meters ASC
-         ),
-         fallback_deso_schools AS (
-           SELECT DISTINCT ON (
-             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, '')))
-           )
-             s.name,
-             s.deso_id,
-             ST_Distance(s.coordinates::geography, COALESCE(nd.geometry, nd.centroid)::geography) AS distance_meters,
-             ST_Y(s.coordinates) AS lat,
-             ST_X(s.coordinates) AS lng
-           FROM schools s
-           JOIN named_districts nd ON nd.id = $1
-           JOIN named_district_deso_map ndm
-             ON ndm.district_id = nd.id
-            AND ndm.deso_id = s.deso_id
-           WHERE s.coordinates IS NOT NULL
-           ORDER BY
-             COALESCE(NULLIF(s.school_unit_code, ''), LOWER(s.name) || '|' || LOWER(COALESCE(s.address, ''))),
-             distance_meters ASC
-         )
-         SELECT jsonb_build_object(
-           'namedMatches', (
-             SELECT COALESCE(
-               jsonb_agg(
-                 jsonb_build_object(
-                   'name', name,
-                   'distance', distance_meters,
-                   'lat', lat,
-                   'lng', lng
-                 )
-               ),
-               '[]'::jsonb
-             )
-             FROM (SELECT * FROM named_matches ORDER BY distance_meters ASC NULLS LAST, name ASC LIMIT 5) named_sample
-           ),
-           'nearbyRealSchools', (
-             SELECT COALESCE(
-               jsonb_agg(
-                 jsonb_build_object(
-                   'name', name,
-                   'distance', distance_meters,
-                   'lat', lat,
-                   'lng', lng
-                 )
-               ),
-               '[]'::jsonb
-             )
-             FROM (SELECT * FROM nearby_real_schools ORDER BY distance_meters ASC, name ASC LIMIT 8) nearby_sample
-           ),
-           'fallbackDesoSchools', (
-             SELECT COALESCE(
-               jsonb_agg(
-                 jsonb_build_object(
-                   'name', name,
-                   'desoId', deso_id,
-                   'distance', distance_meters,
-                   'lat', lat,
-                   'lng', lng
-                 )
-               ),
-               '[]'::jsonb
-             )
-             FROM (SELECT * FROM fallback_deso_schools ORDER BY distance_meters ASC, name ASC LIMIT 5) fallback_sample
-           )
-         ) AS payload`,
-        [deso_id, area.legacyDistrictId, Math.min(schoolRadiusMeters, 3000)],
-      );
-
-      reportRissneSchoolDebug("B", "[DEBUG] Rissne school candidate sets", {
-        districtId: deso_id,
-        payload: candidateSummaryRes.rows[0]?.payload ?? null,
-      });
-    }
-    // #endregion
-
-    // #region debug-point C:akalla-after-schools
-    if (deso_id === "ND-0180-akalla") {
-      fetch(akallaDebugConfig.debugServerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: akallaDebugConfig.debugSessionId,
-          runId: "pre-fix",
-          hypothesisId: "C",
-          location: "src/modules/neighborhoods/neighborhood.routes.ts",
-          msg: "[DEBUG] Akalla after schools query",
-          data: {
-            schoolRows: schoolsRes.rows.length,
-          },
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
 
     const transportRadiusMeters = isDistrict ? 8000 : 4000;
     const addressRadiusMeters = isDistrict ? 8000 : 3500;
@@ -812,20 +490,20 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              SELECT MAX(d.year) AS year
              FROM demographics d
              JOIN named_district_deso_map ndm ON ndm.deso_id = d.deso_id
-             WHERE ndm.district_id = $1
+             WHERE ndm.district_id = $1 AND d.quality IN ('measured', 'derived')
            )
            SELECT
-             COALESCE(SUM(d.population_total), 0)::int AS population_total,
+             SUM(d.population_total)::int AS population_total,
              SUM(d.population_growth * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS population_growth,
+               NULLIF(SUM(CASE WHEN d.population_growth IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS population_growth,
              SUM(d.median_income * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS median_income,
+               NULLIF(SUM(CASE WHEN d.median_income IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS median_income,
              SUM(d.higher_edu_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS higher_edu_pct,
+               NULLIF(SUM(CASE WHEN d.higher_edu_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS higher_edu_pct,
              SUM(d.families_with_kids_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS families_with_kids_pct,
+               NULLIF(SUM(CASE WHEN d.families_with_kids_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS families_with_kids_pct,
              SUM(d.foreign_born_pct * COALESCE(ndm.priority_weight, 1)::numeric) /
-               NULLIF(SUM(COALESCE(ndm.priority_weight, 1)::numeric), 0) AS foreign_born_pct,
+               NULLIF(SUM(CASE WHEN d.foreign_born_pct IS NOT NULL THEN COALESCE(ndm.priority_weight, 1)::numeric END), 0) AS foreign_born_pct,
              ly.year,
              COALESCE(
                jsonb_agg(DISTINCT src.link) FILTER (WHERE src.link IS NOT NULL),
@@ -833,7 +511,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
              ) AS source_links
            FROM latest_year ly
            JOIN named_district_deso_map ndm ON ndm.district_id = $1
-           JOIN demographics d ON d.deso_id = ndm.deso_id AND d.year = ly.year
+           JOIN demographics d ON d.deso_id = ndm.deso_id AND d.year = ly.year AND d.quality IN ('measured', 'derived')
            LEFT JOIN LATERAL jsonb_array_elements(COALESCE(d.source_links, '[]'::jsonb)) src(link) ON TRUE
            GROUP BY ly.year
            LIMIT 1`
@@ -848,7 +526,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
             year,
             COALESCE(source_links, '[]'::jsonb) AS source_links
          FROM demographics
-         WHERE district_id = $1
+         WHERE district_id = $1 AND quality IN ('measured', 'derived')
          ORDER BY year DESC
          LIMIT 1`
           : `SELECT
@@ -861,7 +539,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
             year,
             COALESCE(source_links, '[]'::jsonb) AS source_links
          FROM demographics
-         WHERE deso_id = $1
+         WHERE deso_id = $1 AND quality IN ('measured', 'derived')
          ORDER BY year DESC
          LIMIT 1`,
       [deso_id],
@@ -872,40 +550,40 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
         ? `SELECT
            title,
            COALESCE(project_type, 'infrastructure') AS project_type,
-           COALESCE(confidence, 70) AS confidence,
+           confidence,
            EXTRACT(YEAR FROM NOW())::int + 1 AS year,
            COALESCE(status, 'planned') AS status,
            COALESCE(source_links, '[]'::jsonb) AS source_links
          FROM future_projects
-         WHERE deso_id IN (
+         WHERE quality IN ('measured', 'derived') AND deso_id IN (
            SELECT deso_id
            FROM named_district_deso_map
            WHERE district_id = $1
          )
-         ORDER BY confidence DESC, title ASC
+         ORDER BY confidence DESC NULLS LAST, title ASC
          LIMIT 10`
         : isDistrict
           ? `SELECT
            title,
            COALESCE(project_type, 'infrastructure') AS project_type,
-           COALESCE(confidence, 70) AS confidence,
+           confidence,
            EXTRACT(YEAR FROM NOW())::int + 1 AS year,
             COALESCE(status, 'planned') AS status,
             COALESCE(source_links, '[]'::jsonb) AS source_links
          FROM future_projects
-         WHERE district_id = $1
-         ORDER BY confidence DESC, title ASC
+         WHERE district_id = $1 AND quality IN ('measured', 'derived')
+         ORDER BY confidence DESC NULLS LAST, title ASC
          LIMIT 10`
           : `SELECT
            title,
            COALESCE(project_type, 'infrastructure') AS project_type,
-           COALESCE(confidence, 70) AS confidence,
+           confidence,
            EXTRACT(YEAR FROM NOW())::int + 1 AS year,
             COALESCE(status, 'planned') AS status,
             COALESCE(source_links, '[]'::jsonb) AS source_links
          FROM future_projects
-         WHERE deso_id = $1
-         ORDER BY confidence DESC, title ASC
+         WHERE deso_id = $1 AND quality IN ('measured', 'derived')
+         ORDER BY confidence DESC NULLS LAST, title ASC
          LIMIT 10`,
       [deso_id],
     );
@@ -921,7 +599,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
                ELSE 'stable'
              END AS trend
            FROM crime_stats
-           WHERE deso_id IN (
+           WHERE quality IN ('measured', 'derived') AND deso_id IN (
              SELECT deso_id
              FROM named_district_deso_map
              WHERE district_id = $1
@@ -932,12 +610,12 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
         : isDistrict
           ? `SELECT year, incident_count, trend
        FROM crime_stats
-       WHERE district_id = $1
+       WHERE district_id = $1 AND quality IN ('measured', 'derived')
        ORDER BY year DESC
        LIMIT 5`
           : `SELECT year, incident_count, trend
        FROM crime_stats
-       WHERE deso_id = $1
+       WHERE deso_id = $1 AND quality IN ('measured', 'derived')
        ORDER BY year DESC
        LIMIT 5`,
       [deso_id],
@@ -946,7 +624,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     const transportRes = await pool.query(
       `SELECT
          COUNT(*)::int AS stop_count,
-         COALESCE(AVG(route_count), 0) AS avg_routes,
+         AVG(route_count) AS avg_routes,
          MIN(ST_DistanceSphere(coordinates, ST_SetSRID(ST_MakePoint($1, $2), 4326))) AS nearest_meters,
          COALESCE(
            jsonb_agg(DISTINCT src.link) FILTER (WHERE src.link IS NOT NULL),
@@ -954,7 +632,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
          ) AS source_links
        FROM transport_stops
        LEFT JOIN LATERAL jsonb_array_elements(COALESCE(source_links, '[]'::jsonb)) src(link) ON TRUE
-       WHERE ST_DWithin(
+       WHERE quality IN ('measured', 'derived') AND ST_DWithin(
          coordinates::geography,
          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
          $3
@@ -972,7 +650,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
          ) AS source_links
        FROM addresses
        LEFT JOIN LATERAL jsonb_array_elements(COALESCE(source_links, '[]'::jsonb)) src(link) ON TRUE
-       WHERE ST_DWithin(
+       WHERE quality IN ('measured', 'derived') AND ST_DWithin(
          coordinates::geography,
          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
          $3
@@ -984,7 +662,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
       areaType === "namedDistrict"
         ? `SELECT COUNT(*)::int AS project_count
          FROM future_projects
-         WHERE deso_id IN (
+         WHERE quality IN ('measured', 'derived') AND deso_id IN (
            SELECT deso_id
            FROM named_district_deso_map
            WHERE district_id = $1
@@ -992,139 +670,56 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
         : isDistrict
           ? `SELECT COUNT(*)::int AS project_count
        FROM future_projects
-       WHERE district_id = $1`
+       WHERE district_id = $1 AND quality IN ('measured', 'derived')`
           : `SELECT COUNT(*)::int AS project_count
        FROM future_projects
-       WHERE deso_id = $1`,
+       WHERE deso_id = $1 AND quality IN ('measured', 'derived')`,
       [deso_id],
     );
 
-    const normalizedScores = completeScores(scores as Record<string, unknown>);
+    const scoreView = publicScores(scores as Record<string, unknown>);
 
-    const schoolsFromDb = schoolsRes.rows.map((row, index) => {
-      const performance = Number(row.performance ?? 0);
-      const rowLat = toNumeric(row.lat);
-      const rowLng = toNumeric(row.lng);
-      const fallbackLat = area.lat != null ? Number(area.lat) + (index - 1) * 0.002 : null;
-      const fallbackLng = area.lng != null ? Number(area.lng) + (index - 1) * 0.003 : null;
+    const schools = schoolsRes.rows.map((row) => {
+      const performance = toNumeric(row.performance);
       const distanceMeters = toNumeric(row.distance_meters);
-      const distanceKm = distanceMeters != null ? distanceMeters / 1000 : 0.4 + index * 0.25;
-      const walkMin = Math.max(1, Math.round((distanceKm / 5) * 60)); // ~5 km/h walking speed
+      const distanceKm = distanceMeters != null ? distanceMeters / 1000 : null;
+      const walkMin = distanceKm != null ? Math.max(1, Math.round((distanceKm / 5) * 60)) : null; // ~5 km/h
       const distanceLabel =
-        distanceMeters != null && distanceMeters < 100
-          ? "< 0.1 km"
-          : distanceKm < 1
-            ? `${distanceKm.toFixed(1)} km`
-            : `${Math.round(distanceKm)} km`;
+        distanceMeters == null
+          ? "-"
+          : distanceMeters < 100
+            ? "< 0.1 km"
+            : distanceMeters < 1000
+              ? `${(distanceMeters / 1000).toFixed(1)} km`
+              : `${Math.round(distanceMeters / 1000)} km`;
       return {
-        name: String(row.name ?? `School ${index + 1}`),
+        name: String(row.name ?? ""),
         address: String(row.address ?? ""),
         distance: distanceLabel,
         walkMin,
-        students: Number(row.student_count ?? 0),
+        students: toNumeric(row.student_count),
         performance,
-        lat: rowLat ?? fallbackLat,
-        lng: rowLng ?? fallbackLng,
+        lat: toNumeric(row.lat),
+        lng: toNumeric(row.lng),
+        // Only derived from a real performance figure; never defaulted.
         inspection:
-          performance >= 90 ? "Excellent" : performance >= 75 ? "Approved" : "Needs review",
+          performance === null
+            ? null
+            : performance >= 90
+              ? "Excellent"
+              : performance >= 75
+                ? "Approved"
+                : "Needs review",
         sourceLinks: parseSourceLinks(row.source_links),
       };
     });
 
-    const schools =
-      schoolsFromDb.length > 0
-        ? schoolsFromDb
-        : [0, 1].map((index) => ({
-            name: `${String(area.name ?? "Area")} School ${index + 1}`,
-            address: `${String(area.name ?? "Area")} Street ${10 + index * 10}, 123 45 ${area.municipality ?? "Stockholm"}`,
-            distance: `${(0.6 + index * 0.3).toFixed(1)} km`,
-            walkMin: Math.round(8 + index * 4),
-            students: Math.round(260 + normalizedScores.schools * 5 + index * 55),
-            performance: clampScore(normalizedScores.schools - 3 + index * 4),
-            lat: area.lat != null ? Number(area.lat) + (index === 0 ? 0.002 : -0.002) : null,
-            lng: area.lng != null ? Number(area.lng) + (index === 0 ? -0.002 : 0.002) : null,
-            inspection: normalizedScores.schools >= 80 ? "Approved" : "Needs review",
-          }));
-
-    // #region debug-point B:district-ui-schools
-    if (districtUiDebugTargetIds.has(deso_id)) {
-      reportDistrictUiDebug("B", "[DEBUG] District UI schools built", {
-        districtId: deso_id,
-        schoolQueryRows: schoolsRes.rows.length,
-        schoolsFromDb: schoolsFromDb.length,
-        schoolsReturned: schools.length,
-        firstSchool: schools[0]?.name ?? null,
-        firstSchoolLat: schools[0]?.lat ?? null,
-        firstSchoolLng: schools[0]?.lng ?? null,
-        firstSchoolDistance: schools[0]?.distance ?? null,
-      });
-    }
-    // #endregion
-
-    // #region debug-point A:akalla-neighborhood-detail
-    if (deso_id === "ND-0180-akalla") {
-      fetch(akallaDebugConfig.debugServerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: akallaDebugConfig.debugSessionId,
-          runId: "pre-fix",
-          hypothesisId: "A",
-          location: "src/modules/neighborhoods/neighborhood.routes.ts",
-          msg: "[DEBUG] Akalla neighborhood detail payload",
-          data: {
-            areaType,
-            areaName: area.name,
-            schoolQueryRows: schoolsRes.rows.length,
-            schoolsFromDb: schoolsFromDb.length,
-            schoolsReturned: schools.length,
-            firstSchool: schools[0]?.name ?? null,
-            demographicsRowFound: demographicsRes.rows.length > 0,
-            demographicsYear: demographicsRes.rows[0]?.year ?? null,
-          },
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
-
-    // #region debug-point C:district-ui-payload
-    if (districtUiDebugTargetIds.has(deso_id)) {
-      reportDistrictUiDebug("C", "[DEBUG] District UI payload ready", {
-        districtId: deso_id,
-        demographicsRowFound: demographicsRes.rows.length > 0,
-        demographicsYear: demographicsRes.rows[0]?.year ?? null,
-        projectCount: Number(projectsCountRes.rows[0]?.project_count ?? 0),
-        areaLat,
-        areaLng,
-        schoolCount: schools.length,
-      });
-    }
-    // #endregion
-
-    const demo =
-      demographicsRes.rows[0] ??
-      fallbackDemographics(Number(area.population ?? 0), normalizedScores);
-    const transport = transportRes.rows[0] ?? {
-      stop_count: 0,
-      avg_routes: 0,
-      nearest_meters: null,
-    };
+    const demo = demographicsRes.rows[0] ?? null;
+    const transport = transportRes.rows[0] ?? { stop_count: 0, nearest_meters: null };
     const addressCount = Number(addressesRes.rows[0]?.address_count ?? 0);
-    const projectCountFromDb = Number(projectsCountRes.rows[0]?.project_count ?? 0);
-    const transportScore = normalizedScores.transport;
 
-    const commuteMinutesBase = Math.max(8, 46 - transportScore * 0.28);
-    const commute = {
-      target: `${area.municipality ?? "Stockholm"} City`,
-      car: Math.round(commuteMinutesBase + 6),
-      transit: Math.round(commuteMinutesBase),
-      bike: Math.round(commuteMinutesBase + 10),
-      walk: Math.round(commuteMinutesBase + 30),
-    };
-
-    const futureFromDb = projectsRes.rows.map((row) => {
-      const typeRaw = String(row.project_type ?? "infrastructure").toLowerCase();
+    const future = projectsRes.rows.map((row) => {
+      const typeRaw = String(row.project_type ?? "").toLowerCase();
       const mappedType = typeRaw.includes("school")
         ? "School"
         : typeRaw.includes("transport")
@@ -1136,25 +731,14 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
               : "Road";
 
       return {
-        year: Number(row.year ?? new Date().getFullYear() + 1),
-        title: String(row.title ?? "Planned project"),
+        year: Number(row.year),
+        title: String(row.title ?? ""),
         type: mappedType,
-        confidence: Number(row.confidence ?? 70),
+        confidence: toNumeric(row.confidence),
         sourceLinks: parseSourceLinks(row.source_links),
       };
-    }) as Array<{
-      year: number;
-      title: string;
-      type: "School" | "Transport" | "Housing" | "Park" | "Road";
-      confidence: number;
-      sourceLinks: SourceLink[];
-    }>;
-
-    const future =
-      futureFromDb.length > 0
-        ? futureFromDb
-        : fallbackFutureProjects(String(area.name ?? "Area"), normalizedScores);
-    const projectCount = Math.max(projectCountFromDb, future.length);
+    });
+    const projectCount = Number(projectsCountRes.rows[0]?.project_count ?? 0);
 
     const amenities = [
       {
@@ -1162,106 +746,82 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
         icon: "🏫",
         count: schools.length,
         nearest: schools[0]?.distance ?? "-",
-        sourceLinks: schoolsFromDb.flatMap((school) => school.sourceLinks ?? []),
+        sourceLinks: schools.flatMap((school) => school.sourceLinks ?? []),
       },
       {
         label: "Transit stops",
         icon: "🚆",
         count: Number(transport.stop_count ?? 0),
         nearest: formatDistanceKm(transport.nearest_meters ?? null),
-        sourceLinks: (() => {
-          const links = parseSourceLinks(transport.source_links);
-          return links.length > 0
-            ? links
-            : [{ label: "Trafiklab", url: "https://www.trafiklab.se/" }];
-        })(),
+        sourceLinks: parseSourceLinks(transport.source_links),
       },
       {
         label: "Addresses",
         icon: "🏠",
         count: addressCount,
         nearest: formatDistanceKm(addressesRes.rows[0]?.nearest_meters ?? null),
-        sourceLinks: (() => {
-          const links = parseSourceLinks(addressesRes.rows[0]?.source_links);
-          return links.length > 0
-            ? links
-            : [
-                {
-                  label: "Lantmäteriet",
-                  url: "https://www.lantmateriet.se/sv/geodata/geodataprodukter/produktlista/adresser/",
-                },
-              ];
-        })(),
+        sourceLinks: parseSourceLinks(addressesRes.rows[0]?.source_links),
       },
       {
         label: "Future projects",
         icon: "🏗️",
         count: projectCount,
-        nearest: projectCount > 0 ? "1.0 km" : "-",
-        sourceLinks: futureFromDb.flatMap((project) => project.sourceLinks ?? []),
+        nearest: "-",
+        sourceLinks: future.flatMap((project) => project.sourceLinks ?? []),
       },
     ];
 
     const crimeStats = crimeRes.rows.map((row) => ({
-      year: Number(row.year ?? new Date().getFullYear()),
-      incidents: Number(row.incident_count ?? 0),
-      trend: String(row.trend ?? "stable"),
+      year: Number(row.year),
+      incidents: toNumeric(row.incident_count),
+      trend: row.trend ? String(row.trend) : null,
     }));
 
-    const growthConfidence = normalizedScores.growth;
-    const growthLevel = growthConfidence >= 85 ? "High" : growthConfidence >= 70 ? "Medium" : "Low";
-    const populationGrowthPct = Number(demo.population_growth ?? 0);
-    const avgProjectConfidence =
-      projectCount > 0
-        ? Number(
-            future.reduce((sum, project) => sum + Number(project.confidence ?? 70), 0) /
-              projectCount,
-          )
-        : 0;
+    const growthScore = scoreView.growth;
+    const growthPrediction =
+      growthScore === null
+        ? null
+        : {
+            level: growthScore >= 85 ? "High" : growthScore >= 70 ? "Medium" : "Low",
+            confidence: growthScore,
+            rationale: `Based on ${projectCount} planned projects and the area's growth score.`,
+          };
 
     return sendApiSuccess(reply, {
       area: {
         id: area.id,
         name: area.name ?? "",
         municipality: area.municipality ?? "Unknown",
-        population: area.population,
+        population: demo ? toNumeric(demo.population_total) : toNumeric(area.population),
         coordinates: {
           lat: area.lat ?? undefined,
           lng: area.lng ?? undefined,
         },
       },
-      scores: {
-        overall: normalizedScores.overall,
-        demographics: normalizedScores.demographics,
-        housing: normalizedScores.housing,
-        transport: normalizedScores.transport,
-        schools: normalizedScores.schools,
-        safety: normalizedScores.safety,
-        green: normalizedScores.green,
-        growth: normalizedScores.growth,
-      },
+      scores: scoreView,
       details: {
         schools,
-        commute,
+        // No commute data source exists yet (DR-51).
+        commute: null,
         amenities,
-        demographics: {
-          population: Number(demo.population_total ?? area.population ?? 0),
-          growth: Number(demo.population_growth ?? 0),
-          medianIncome: Number(demo.median_income ?? 0),
-          avgAge: Math.round(30 + Number(demo.foreign_born_pct ?? 0) * 0.2),
-          familiesPct: Number(demo.families_with_kids_pct ?? 0),
-          higherEduPct: Number(demo.higher_edu_pct ?? 0),
-          ownershipPct: Math.max(20, Math.min(90, 70 - Number(demo.foreign_born_pct ?? 0) * 0.35)),
-          sourceLinks: parseSourceLinks(demo.source_links),
-        },
+        demographics: demo
+          ? {
+              population: toNumeric(demo.population_total),
+              year: toNumeric(demo.year),
+              growth: toNumeric(demo.population_growth),
+              medianIncome: toNumeric(demo.median_income),
+              familiesPct: toNumeric(demo.families_with_kids_pct),
+              higherEduPct: toNumeric(demo.higher_edu_pct),
+              foreignBornPct: toNumeric(demo.foreign_born_pct),
+              avgAge: null,
+              ownershipPct: null,
+              sourceLinks: parseSourceLinks(demo.source_links),
+            }
+          : null,
         future,
-        safety: normalizedScores.safety,
+        safety: scoreView.safety,
         crimeStats,
-        growthPrediction: {
-          level: growthLevel,
-          confidence: growthConfidence,
-          rationale: `Based on ${projectCount} planned projects, ${populationGrowthPct.toFixed(1)}% population growth, and ${avgProjectConfidence.toFixed(0)} average project confidence.`,
-        },
+        growthPrediction,
       },
     });
   });
@@ -1277,16 +837,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     const areaData = await getAreaDetails(id);
     if (areaData?.areaType === "namedDistrict") {
       const scores = await getScores(id, "namedDistrict");
-      return sendApiSuccess(reply, {
-        type: "district",
-        score: scores.overallScore,
-        transport: scores.transportScore,
-        schools: scores.schoolsScore,
-        safety: scores.safetyScore,
-        housing: scores.housingMarketScore,
-        green: scores.greenAreasScore,
-        growth: scores.futureGrowthScore,
-      });
+      return sendApiSuccess(reply, scorePayload("district", scores));
     }
 
     // Try district first
@@ -1298,16 +849,7 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
 
     if (districtResult.length > 0) {
       const scores = districtResult[0];
-      return sendApiSuccess(reply, {
-        type: "district",
-        score: scores.overallScore,
-        transport: scores.transportScore,
-        schools: scores.schoolsScore,
-        safety: scores.safetyScore,
-        housing: scores.housingMarketScore,
-        green: scores.greenAreasScore,
-        growth: scores.futureGrowthScore,
-      });
+      return sendApiSuccess(reply, scorePayload("district", scores));
     }
 
     // Try DESO area
@@ -1322,15 +864,6 @@ export async function neighborhoodRoutes(fastify: FastifyInstance, _options: obj
     }
 
     const scores = desoResult[0];
-    return sendApiSuccess(reply, {
-      type: "deso",
-      score: scores.overallScore,
-      transport: scores.transportScore,
-      schools: scores.schoolsScore,
-      safety: scores.safetyScore,
-      housing: scores.housingMarketScore,
-      green: scores.greenAreasScore,
-      growth: scores.futureGrowthScore,
-    });
+    return sendApiSuccess(reply, scorePayload("deso", scores));
   });
 }

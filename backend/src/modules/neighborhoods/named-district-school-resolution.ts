@@ -74,8 +74,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              )
                sp.name,
                COALESCE(sp.address, '') AS address,
-               COALESCE(sp.student_count, 0) AS student_count,
-               COALESCE(sp.performance, 0) AS performance,
+               sp.student_count AS student_count,
+               sp.performance AS performance,
                ST_Y(sp.coordinates) AS lat,
                ST_X(sp.coordinates) AS lng,
                COALESCE(sp.source_links, '[]'::jsonb) AS source_links,
@@ -86,15 +86,15 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                  NULLIF(sp.school_unit_code, ''),
                  LOWER(sp.name) || '|' || LOWER(COALESCE(sp.address, ''))
                ) AS school_identity
-             FROM schools sp
+             FROM (SELECT * FROM schools WHERE quality IN ('measured', 'derived')) sp
              JOIN district_context dc ON dc.geometry IS NOT NULL
              WHERE sp.coordinates IS NOT NULL
                AND ST_Covers(dc.geometry, sp.coordinates)
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            ),
            geometry_buffer_schools AS (
              SELECT DISTINCT ON (
@@ -105,8 +105,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              )
                sp.name,
                COALESCE(sp.address, '') AS address,
-               COALESCE(sp.student_count, 0) AS student_count,
-               COALESCE(sp.performance, 0) AS performance,
+               sp.student_count AS student_count,
+               sp.performance AS performance,
                ST_Y(sp.coordinates) AS lat,
                ST_X(sp.coordinates) AS lng,
                COALESCE(sp.source_links, '[]'::jsonb) AS source_links,
@@ -117,7 +117,7 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                  NULLIF(sp.school_unit_code, ''),
                  LOWER(sp.name) || '|' || LOWER(COALESCE(sp.address, ''))
                ) AS school_identity
-             FROM schools sp
+             FROM (SELECT * FROM schools WHERE quality IN ('measured', 'derived')) sp
              JOIN district_context dc ON dc.geometry IS NOT NULL
              WHERE sp.coordinates IS NOT NULL
                AND sp.coordinates && ST_Expand(dc.geometry, $2)
@@ -126,8 +126,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            ),
            district_geo_schools AS (
              SELECT DISTINCT ON (
@@ -138,8 +138,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              )
                sp.name,
                COALESCE(sp.address, '') AS address,
-               COALESCE(sp.student_count, 0) AS student_count,
-               COALESCE(sp.performance, 0) AS performance,
+               sp.student_count AS student_count,
+               sp.performance AS performance,
                ST_Y(sp.coordinates) AS lat,
                ST_X(sp.coordinates) AS lng,
                COALESCE(sp.source_links, '[]'::jsonb) AS source_links,
@@ -150,7 +150,7 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                  NULLIF(sp.school_unit_code, ''),
                  LOWER(sp.name) || '|' || LOWER(COALESCE(sp.address, ''))
                ) AS school_identity
-             FROM schools sp
+             FROM (SELECT * FROM schools WHERE quality IN ('measured', 'derived')) sp
              JOIN district_context dc ON TRUE
              WHERE $3::varchar IS NOT NULL
                AND sp.district_id = $3
@@ -159,8 +159,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            ),
            district_placeholders AS (
              SELECT DISTINCT ON (
@@ -171,8 +171,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              )
                sp.name,
                COALESCE(sp.address, '') AS address,
-               COALESCE(sp.student_count, 0) AS student_count,
-               COALESCE(sp.performance, 0) AS performance,
+               sp.student_count AS student_count,
+               sp.performance AS performance,
                NULL::double precision AS lat,
                NULL::double precision AS lng,
                COALESCE(sp.source_links, '[]'::jsonb) AS source_links,
@@ -183,14 +183,14 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                  NULLIF(sp.school_unit_code, ''),
                  LOWER(sp.name) || '|' || LOWER(COALESCE(sp.address, ''))
                ) AS school_identity
-             FROM schools sp
+             FROM (SELECT * FROM schools WHERE quality IN ('measured', 'derived')) sp
              WHERE $3::varchar IS NOT NULL
                AND sp.district_id = $3
                AND sp.coordinates IS NULL
              ORDER BY
                school_identity,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            ),
            deso_fallback_schools AS (
              SELECT DISTINCT ON (
@@ -201,8 +201,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              )
                sp.name,
                COALESCE(sp.address, '') AS address,
-               COALESCE(sp.student_count, 0) AS student_count,
-               COALESCE(sp.performance, 0) AS performance,
+               sp.student_count AS student_count,
+               sp.performance AS performance,
                ST_Y(sp.coordinates) AS lat,
                ST_X(sp.coordinates) AS lng,
                COALESCE(sp.source_links, '[]'::jsonb) AS source_links,
@@ -213,7 +213,7 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                  NULLIF(sp.school_unit_code, ''),
                  LOWER(sp.name) || '|' || LOWER(COALESCE(sp.address, ''))
                ) AS school_identity
-             FROM schools sp
+             FROM (SELECT * FROM schools WHERE quality IN ('measured', 'derived')) sp
              JOIN district_context dc ON TRUE
              JOIN named_district_deso_map ndm
                ON ndm.district_id = dc.id
@@ -222,8 +222,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              ORDER BY
                school_identity,
                distance_meters ASC,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            ),
            ranked_schools AS (
              SELECT * FROM geometry_match_schools
@@ -255,8 +255,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
                source_priority ASC,
                (distance_meters IS NULL) ASC,
                distance_meters ASC NULLS LAST,
-               performance DESC,
-               student_count DESC
+               performance DESC NULLS LAST,
+               student_count DESC NULLS LAST
            )
            SELECT
              name,
@@ -273,8 +273,8 @@ export function buildNamedDistrictSchoolResolutionQuery(options: NamedDistrictSc
              source_priority ASC,
              (distance_meters IS NULL) ASC,
              distance_meters ASC NULLS LAST,
-             performance DESC,
-             student_count DESC
+             performance DESC NULLS LAST,
+             student_count DESC NULLS LAST
            LIMIT $5`,
     values: [
       options.districtId,

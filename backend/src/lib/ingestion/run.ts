@@ -1,5 +1,38 @@
 import { pool } from "../../db/connection";
 import { IngestionEngine } from "./engine";
+import type { RunRecorder } from "./run-recorder";
+
+/** Stores the run outcome. Never lets bookkeeping failures hide the ingestion result. */
+async function persistRun(command: string, recorder: RunRecorder): Promise<void> {
+  try {
+    const run = await pool.query(
+      `INSERT INTO ingestion_runs (command, status, finished_at)
+       VALUES ($1, $2, NOW())
+       RETURNING id`,
+      [command, recorder.status()],
+    );
+    const runId = run.rows[0]?.id;
+    for (const step of recorder.steps()) {
+      await pool.query(
+        `INSERT INTO ingestion_steps (run_id, source, status, rows_written, message)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          runId,
+          step.source,
+          step.status,
+          step.rowsWritten,
+          `x${step.occurrences}${step.messages.length > 0 ? `: ${step.messages.join("; ")}` : ""}`,
+        ],
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[ingest] could not record run (is migration 019 applied?): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
 
 async function main() {
   const engine = new IngestionEngine();
@@ -23,6 +56,10 @@ async function main() {
     );
     result = await engine.ingestAll(arg1 ?? "123", arg2 ?? "Stockholm", year);
     console.log("[ingest] phase single-area done");
+  } else if (command === "rescore") {
+    console.log("[ingest] phase rescore started (no network)");
+    result = await engine.rescoreAllAreas(year);
+    console.log("[ingest] phase rescore done");
   } else if (command === "all-areas") {
     const areaYear = Number.parseInt(arg1 ?? "2025", 10);
     const resolvedYear = Number.isFinite(areaYear) ? areaYear : 2025;
@@ -153,12 +190,16 @@ async function main() {
     };
   }
 
+  await persistRun(command, engine.recorder);
+  console.log(`[ingest] run summary (${engine.recorder.status()}):\n${engine.recorder.summary()}`);
+
   const elapsedMs = Date.now() - startedAt;
   console.log(
     `[ingest] complete in ${elapsedMs < 1000 ? `${elapsedMs}ms` : `${(elapsedMs / 1000).toFixed(1)}s`}`,
   );
   console.log("Ingestion complete:", result);
-  process.exit(0);
+  // Non-zero when any step failed, so schedulers and CI notice (DR-22).
+  process.exit(engine.recorder.exitCode());
 }
 
 main().catch((err) => {
