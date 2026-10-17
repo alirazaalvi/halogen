@@ -27,9 +27,7 @@ bun run dev
 - Swagger docs: http://localhost:3001/docs
 
 **Python AI Service (venv):**
-- Scoring algorithms
-- AI chat/summary generation
-- Reads from database only
+- Chat/summary text from supplied scores only; no scoring logic and no verdicts
 
 ## Ingestion Engine
 
@@ -46,3 +44,19 @@ Endpoints:
 - POST `/internal/ingest/trafiklab` - Transport
 - POST `/internal/ingest/skolverket` - Schools
 - POST `/internal/ingest/bra` - Crime
+## Data reliability
+
+See `docs/specs/2026-10-17-data-reliability-spec.md`.
+
+- No synthetic data: a source that fails or has no valid area-level data writes nothing and
+  is recorded as `failed` or `skipped` (see `ingestion_runs` / `ingestion_steps`).
+- Currently real: SCB DeSO population, Skolverket school locations, Trafiklab stops (needs
+  `TRAFIKLAB_API_KEY`). Crime, environment, building data and projects are `skipped`.
+- Scores come from `src/lib/scoring/score.ts`: components without data are `null`, the
+  overall score uses only available components and is withheld below 50% coverage.
+- The CLI exits non-zero when any step failed.
+
+```bash
+bun run src/lib/ingestion/run.ts rescore     # recompute scores from stored data, no network
+bun test                                      # includes a guard against synthetic data
+```
