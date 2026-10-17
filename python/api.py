@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os
 import psycopg2
-from scoring_engine import ScoringEngine
 
 app = FastAPI(title="Swedish Neighborhood Intelligence AI")
 
@@ -15,10 +14,10 @@ def get_db_connection():
 
 class NeighborhoodContext(BaseModel):
     name: str
-    region: str
-    scores: dict
-    median_income: int
-    demographics: dict
+    region: str = ""
+    scores: dict = {}
+    median_income: Optional[int] = None
+    demographics: dict = {}
 
 class ChatRequest(BaseModel):
     message: str
@@ -28,48 +27,70 @@ class ChatRequest(BaseModel):
 class AreaDataRequest(BaseModel):
     deso_id: str
 
+SCORE_LABELS = {
+    "schools": "Schools",
+    "transport": "Transport",
+    "safety": "Safety",
+    "green": "Green areas",
+    "growth": "Future growth",
+    "demographics": "Demographics",
+    "housing": "Housing stock",
+}
+
+
+def describe_scores(scores: dict) -> tuple[list[str], list[str]]:
+    """Returns (available, missing) score descriptions. Never fills in missing values."""
+    available, missing = [], []
+    for key, label in SCORE_LABELS.items():
+        value = scores.get(key)
+        if value is None:
+            missing.append(label)
+        else:
+            available.append(f"{label}: {round(value)}/100")
+    return available, missing
+
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    """AI chat endpoint - reads data from database."""
-    if request.context:
-        area = request.context.name
-        overall = request.context.scores.get('overall', 0)
-        schools = request.context.scores.get('schools', 0)
-        safety = request.context.scores.get('safety', 0)
+    """Answers only from stored scores. Does not give investment verdicts."""
+    if not request.context:
+        return {"reply": "Tell me which area you are interested in and I can show what data we have for it."}
 
-        if 'buy' in request.message.lower() or 'investment' in request.message.lower():
-            verdict = 'BUY' if overall > 85 else ('CONSIDER' if overall > 75 else 'CAUTION')
-            return {
-                "reply": f"Based on the data for {area}, this area scores {overall}/100 overall. Schools: {schools}/100, Safety: {safety}/100. Median income: {request.context.median_income} SEK. Recommendation: {verdict}."
-            }
+    scores = request.context.scores or {}
+    available, missing = describe_scores(scores)
+    overall = scores.get("overall")
+    parts = [
+        f"{request.context.name}: overall score {round(overall)}/100."
+        if overall is not None
+        else f"{request.context.name} has no overall score yet because too little data is available."
+    ]
+    if available:
+        parts.append("Available: " + ", ".join(available) + ".")
+    if missing:
+        parts.append("No data yet for: " + ", ".join(missing) + ".")
+    message = request.message.lower()
+    if "buy" in message or "invest" in message:
+        parts.append("I can't give a buy or investment recommendation from this data.")
+    return {"reply": " ".join(parts)}
 
-    return {"reply": "I can help analyze Swedish neighborhoods. Please provide an address or area name."}
 
 @app.post("/summary")
 async def generate_summary(request: NeighborhoodContext):
-    """Generate AI summary - reads from database."""
-    scores = request.scores
-    overall = scores.get('overall', 0)
-    schools = scores.get('schools', 0)
-    safety = scores.get('safety', 0)
-    growth = scores.get('growth', 0)
-
-    pros = []
-    cons = []
-
-    if schools >= 85:
-        pros.append(f"Excellent school ratings ({schools}/100)")
-    if safety < 70:
-        cons.append(f"Safety below regional average ({safety}/100)")
-    if growth >= 85:
-        pros.append(f"Strong future growth outlook ({growth}/100)")
-
+    """Factual summary of available scores. No verdict, no inferred pros and cons."""
+    available, missing = describe_scores(request.scores or {})
+    overall = (request.scores or {}).get("overall")
+    summary = (
+        f"{request.name} in {request.region} scores {round(overall)}/100 overall."
+        if overall is not None
+        else f"{request.name} in {request.region} has no overall score yet."
+    )
     return {
-        "summary": f"{request.name} in {request.region} scores {overall}/100 overall. Good for families.",
-        "pros": pros,
-        "cons": cons,
-        "recommendation": "BUY" if overall > 85 and safety >= 70 else "CONSIDER"
+        "summary": summary,
+        "available": available,
+        "missing": missing,
+        "recommendation": None,
     }
+
 
 @app.post("/calculate-score")
 async def calculate_score(request: AreaDataRequest):

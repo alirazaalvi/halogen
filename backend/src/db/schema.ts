@@ -96,6 +96,8 @@ export const neighborhoodScores = pgTable("neighborhood_scores", {
   safetyScore: numeric("safety_score"),
   greenAreasScore: numeric("green_areas_score"),
   futureGrowthScore: numeric("future_growth_score"),
+  dataCoverage: numeric("data_coverage"),
+  scoringVersion: varchar("scoring_version", { length: 20 }),
 });
 
 export const districtScores = pgTable("district_scores", {
@@ -108,6 +110,8 @@ export const districtScores = pgTable("district_scores", {
   safetyScore: numeric("safety_score"),
   greenAreasScore: numeric("green_areas_score"),
   futureGrowthScore: numeric("future_growth_score"),
+  dataCoverage: numeric("data_coverage"),
+  scoringVersion: varchar("scoring_version", { length: 20 }),
 });
 
 export const demographics = pgTable("demographics", {

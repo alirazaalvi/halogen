@@ -1,6 +1,11 @@
 import type { FastifyReply } from "fastify";
 
-export type ApiErrorCode = "BAD_REQUEST" | "NOT_FOUND" | "VALIDATION_ERROR" | "INTERNAL_ERROR";
+export type ApiErrorCode =
+  | "BAD_REQUEST"
+  | "NOT_FOUND"
+  | "VALIDATION_ERROR"
+  | "INTERNAL_ERROR"
+  | "AI_UNAVAILABLE";
 
 export type ApiErrorBody = {
   success: false;

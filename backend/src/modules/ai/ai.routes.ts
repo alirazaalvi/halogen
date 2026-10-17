@@ -10,7 +10,13 @@ export async function aiRoutes(fastify: FastifyInstance, _options: object) {
     const parsed = parseOrReply(
       z.object({
         message: z.string().min(1),
-        context: z.object({ name: z.string().optional() }).optional(),
+        context: z
+          .object({
+            name: z.string().optional(),
+            region: z.string().optional(),
+            scores: z.record(z.number().nullable()).optional(),
+          })
+          .optional(),
       }),
       request.body,
       reply,
@@ -29,17 +35,22 @@ export async function aiRoutes(fastify: FastifyInstance, _options: object) {
       const response = await fetch(`${PYTHON_API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, context }),
+        body: JSON.stringify({
+          message,
+          context: context?.name
+            ? { name: context.name, region: context.region ?? "", scores: context.scores ?? {} }
+            : undefined,
+        }),
       });
+      if (!response.ok) {
+        return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service returned an error");
+      }
 
       const data = await response.json();
       return sendApiSuccess(reply, data);
     } catch (_error) {
-      const contextName = context?.name ?? "Kista";
-
-      return sendApiSuccess(reply, {
-        reply: `I can help analyze Swedish neighborhoods. Questions about ${contextName}? Ask about schools, transport, safety or investment potential.`,
-      });
+      // Never answer with canned text that looks like analysis (DR-52).
+      return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service is unavailable");
     }
   });
 
@@ -61,16 +72,14 @@ export async function aiRoutes(fastify: FastifyInstance, _options: object) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deso_id }),
       });
+      if (!response.ok) {
+        return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service returned an error");
+      }
 
       const data = await response.json();
       return sendApiSuccess(reply, data);
     } catch (_error) {
-      return sendApiSuccess(reply, {
-        summary: `Area ${deso_id}: Good family area with average scores.`,
-        pros: ["Central location", "Good schools"],
-        cons: ["Higher than average prices"],
-        recommendation: "CONSIDER",
-      });
+      return sendApiError(reply, 503, "AI_UNAVAILABLE", "The AI service is unavailable");
     }
   });
 }
