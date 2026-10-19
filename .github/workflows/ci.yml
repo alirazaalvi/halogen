@@ -42,6 +42,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply all migrations to an empty database
         run: bash backend/scripts/db-migrate.sh
+      - uses: oven-sh/setup-bun@v2
+      - name: Ingestion end-to-end test (real PostGIS, mocked external APIs)
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/neighborhood_intelligence
+        run: |
+          bun install
+          bun test test/
 
   scb-mcp:
     runs-on: ubuntu-latest
