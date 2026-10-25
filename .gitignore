@@ -44,3 +44,5 @@ __pycache__
 dist-worker
 .wrangler
 backups/
+
+backend/api/

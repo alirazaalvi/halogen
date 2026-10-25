@@ -19,6 +19,9 @@ function getSharedPool(): Pool {
         process.env.DATABASE_URL ||
         "postgresql://postgres:postgres@localhost:5432/neighborhood_intelligence",
       ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+      // Serverless instances are many and short-lived: keep each pool small.
+      max: Number(process.env.DB_POOL_MAX ?? 5),
+      idleTimeoutMillis: 10_000,
     });
   }
   return sharedPool;

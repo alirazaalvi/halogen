@@ -19,7 +19,8 @@
     "cf:build": "wrangler deploy --dry-run --outdir dist-worker",
     "cf:deploy": "wrangler deploy",
     "db:dump": "bash ./scripts/db-dump.sh",
-    "db:restore": "bash ./scripts/db-restore.sh"
+    "db:restore": "bash ./scripts/db-restore.sh",
+    "vercel:build": "esbuild src/vercel.ts --bundle --platform=node --target=node20 --format=esm --outfile=api/index.mjs --external:pg-native --banner:js=\"import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\""
   },
   "dependencies": {
     "@fastify/cors": "^8.3.0",
@@ -37,6 +38,7 @@
     "@types/pg": "^8.20.0",
     "bun-types": "latest",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.2",
     "typescript": "^5.8.3",
     "wrangler": "^4.151.1"
   }
